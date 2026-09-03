@@ -125,10 +125,12 @@ security hardening, SSO.
   (`2026-09-03-kicking-off-sleipnir.md`)
 - Session close: all adversarial-review decisions settled; next up =
   handover contracts + program layout (principal + implementers)
+- `next_steps.md` written for tomorrow's session (housekeeping: pending
+  push, GitHub branch protection, qwen3.8-flash check)
 
 ## Token usage
 
 | total input | uncached input | cache read | cache write | output | reasoning |
-| 4306677 | 138741 | 4167936 | 0 | 82657 | 36069 |
+| 4724554 | 143946 | 4580608 | 0 | 85509 | 37008 |
 
 _(run `sessions/update-usage.sh sessions/2026-09-03-architecture-kickoff.md` at session end)_
