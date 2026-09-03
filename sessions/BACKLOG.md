@@ -45,7 +45,21 @@ ADR-0015 accepted; now concrete.
 ### 6. Persistence schema
 PostgreSQL schema (ADR-0010): projects, runs, events, evidence, approvals,
 users, tool registry — plus the **context graph tables** (ADR-0016).
-Event table is the spine.
+Event table is the spine. Includes: **hash-chained event log** (adversarial
+review A11), schema migrations strategy, retention columns.
+
+### 7. Security hardening (from adversarial review 001)
+- Worker egress policy = target scope only (A3) → ADR.
+- Untrusted-content policy: marking, sanitization, UI rendering rules (A1/A9).
+- Job-scoped credential design (A6); secrets/credential handling (A8).
+- Node hardening: encrypted storage, mTLS identity, revoke/wipe (A7).
+- Data classification + local-model-only engagement policy (A4) → ADR.
+- Tool image build/pin/sign pipeline (A10).
+- Platform-host-compromise scenario review.
+
+### 8. SSO / OIDC
+Own session after platform core exists (enterprise P0; hand-rolled
+OIDC/JWT client, high-review bar).
 
 ## Standing open questions
 

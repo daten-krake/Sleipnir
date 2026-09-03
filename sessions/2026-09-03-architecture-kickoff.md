@@ -64,12 +64,25 @@
   questions archived
 
 See `sessions/BACKLOG.md`. Queue: handover contracts, program layout,
-UI design, remote agent (Pi), agent loop design, persistence schema.
-All round-3 questions answered.
+UI design, remote agent (Pi), agent loop design, persistence schema,
+security hardening, SSO.
+
+## Round 4 — spec, adversarial review, enterprise readiness
+
+- Created `SPEC.md` (v0.1) + `AGENTS.md` (rules for agent builders)
+- `docs/adversarial-review-2026-09-03.md`: 15 findings; CRITICAL: prompt
+  injection from targets, orchestrator→runtime escalation, worker egress
+  exfil; HIGH: LLM endpoint data leak, approval manipulation, node theft,
+  stored credentials; verdict: build-by-agents feasible contract-first
+- `docs/enterprise-readiness.md`: P0/P1/P2 gap list (SSO, audit export,
+  retention, backups, migrations, secrets, air-gap...)
+- ADR-0017 Proposed: spawn broker (orchestrator never touches runtime)
+- ADR-0018 Proposed: approval binding (fingerprint + execution-time
+  re-validation)
 
 ## Token usage
 
 | total input | uncached input | cache read | cache write | output | reasoning |
-| 972174 | 63374 | 908800 | 0 | 35457 | 14263 |
+| 1523939 | 84707 | 1439232 | 0 | 50340 | 19768 |
 
 _(run `sessions/update-usage.sh sessions/2026-09-03-architecture-kickoff.md` at session end)_
