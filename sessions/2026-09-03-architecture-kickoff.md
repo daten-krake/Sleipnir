@@ -103,9 +103,21 @@ security hardening, SSO.
   both build agents (principal/implementer) updated to enforce it;
   SPEC.md constraints C9/C10 added
 
+## Round 8 — cloud models with data masking
+
+- Product owner decision: cloud models allowed for customer work **with
+  mandatory data masking** (instead of local-only)
+- ADR-0020 Accepted: per-engagement LLM data policy
+  (`local-only`/`cloud-masked`/`cloud-raw`), platform-core **LLM gateway**
+  as single enforcement/egress-logging point, per-run pseudonymization
+  mapping, captured secrets never leave under any policy
+- SPEC.md: constraint C11, §7 gateway description, topology updated
+- Last open decision from the adversarial review closed — all CRITICAL/HIGH
+  items are now decided or scheduled
+
 ## Token usage
 
 | total input | uncached input | cache read | cache write | output | reasoning |
-| 3148179 | 119571 | 3028608 | 0 | 69991 | 29213 |
+| 3515069 | 126397 | 3388672 | 0 | 75052 | 31657 |
 
 _(run `sessions/update-usage.sh sessions/2026-09-03-architecture-kickoff.md` at session end)_

@@ -23,7 +23,7 @@ P2 = differentiator/later. Items already covered by ADRs are marked.
 | Audit export (JSON/CSV + SIEM webhook) | P0 | event log already exists; needs export + retention proofs |
 | Evidence chain of custody (hash-chained log, signed reports) | P0 | adversarial review A11 |
 | Data retention & destruction policies per engagement (incl. captured creds) | P0 | adversarial review A8; GDPR-adjacent for EU clients |
-| Per-engagement data classification + local-model-only policy | P0 | adversarial review A4 |
+| Per-engagement data classification (local-only / cloud-masked / cloud-raw) | ✅ | ADR-0020: masking + LLM gateway instead of local-only |
 | SBOM + CVE policy for bundled tool images | P1 | adversarial review A10 |
 | Licensing review of bundled offensive tools | P1 | ADR-0008 follow-up |
 

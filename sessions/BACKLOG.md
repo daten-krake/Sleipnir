@@ -58,7 +58,7 @@ Findings tracker (details in `docs/adversarial-review-2026-09-03.md`):
 | A1 prompt injection | CRIT | flag | this session |
 | A2 runtime escalation | CRIT | ✅ decided | ADR-0017 Accepted |
 | A3 worker egress | CRIT | flag | this session → own ADR |
-| A4 LLM data leak | HIGH | policy | needs ADR after policy decision |
+| A4 LLM data leak | HIGH | ✅ decided | ADR-0020 Accepted (masking + gateway) |
 | A5 approval manipulation | HIGH | ✅ decided | ADR-0018 Accepted |
 | A6 API credentials | HIGH | flag | this session + API design |
 | A7 node theft/impersonation | HIGH | flag | this session + session 4 |
@@ -76,7 +76,8 @@ Work items:
 - Untrusted-content policy: marking, sanitization, UI rendering rules (A1/A9).
 - Job-scoped credential design (A6); secrets/credential handling (A8).
 - Node hardening: encrypted storage, mTLS identity, revoke/wipe (A7).
-- Data classification + local-model-only engagement policy (A4) → ADR.
+- Data classification resolved (A4 → ADR-0020); remaining masking work:
+  scanner design (graph-entity registry + patterns) in this session.
 - Tool image build/pin/sign pipeline (A10).
 - Platform-host-compromise scenario review.
 

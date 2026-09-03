@@ -31,6 +31,7 @@ and remote on-site agent nodes (Raspberry Pi). See `docs/VISION.md`.
 | C8 | Learning/memory strictly per-engagement; no cross-customer data flow | ADR-0016 |
 | C9 | Errors/logs descriptive and machine-traceable: origin function + correlation ids in every error, redaction mandatory, stdlib `slog` | ADR-0019 |
 | C10 | Idiomatic Go (Effective Go / Code Review Comments) is a hard review criterion | AGENTS.md |
+| C11 | All model traffic routes through the platform LLM gateway; cloud egress requires per-run pseudonymization of client identifiers; captured secrets never leave the platform | ADR-0020 |
 
 ## 3. Roles
 
@@ -48,7 +49,7 @@ and remote on-site agent nodes (Raspberry Pi). See `docs/VISION.md`.
                  ┌──────────────────────────── Platform (Docker) ───────────────────────────┐
    browser ─────►│  HTMX UI + /api/v1 JSON  (one service core, two faces — ADR-0011)        │
                  │  auth · scope/policy engine · approval service · notification service    │
-                 │  spawn broker · event store · context graph · evidence store · tool reg. │
+                 │  spawn broker · LLM gateway · event store · graph · evidence · tool reg. │
                  └───────▲──────────────▲────────────────────▲──────────────┬───────────────┘
                          │ JSON API     │ JSON API          │ JSON API     │ spawn requests
                          │ (mTLS token) │ (job token)       │ (job token)  │ (never a docker socket)
@@ -56,7 +57,8 @@ and remote on-site agent nodes (Raspberry Pi). See `docs/VISION.md`.
                  │ Remote agent │  │ Orchestr. │   │ Worker (hand)   │  worker containers
                  │ node (Pi)    │  │ (per job) │   │ (per task)      │  (ephemeral, tool images)
                  └──────────────┘  └────┬──────┘   └─────────────────┘
-                                        │ LLM calls (OpenAI-compatible)
+                                        │ LLM calls (always via the platform
+                                        │ LLM gateway: policy + masking)
                                         ▼
                           Model endpoints (Qwen Cloud, LM Studio, ...)
 ```
@@ -121,6 +123,12 @@ Components:
 
 - Provider contract: OpenAI-compatible chat completions + tool calling,
   streamed. Provider endpoint configuration per ADR-0006/0014.
+- **LLM gateway** (platform core): every model call from orchestrator or
+  workers routes through it. It enforces the engagement's data policy
+  (`local-only` / `cloud-masked` / `cloud-raw`, ADR-0020): pseudonymizes
+  client identifiers with a per-run mapping table, excludes captured
+  secrets entirely, remaps model output back at the boundary, and logs
+  egress metadata. Agents never hold cloud model credentials.
 - Model-role matrix (configurable): orchestrator = strong reasoning;
   enumeration/routine = small fast; research = capable; summarizer = small.
 - Every run snapshots its exact model config into the event log
