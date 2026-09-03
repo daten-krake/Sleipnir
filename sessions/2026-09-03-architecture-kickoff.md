@@ -4,37 +4,43 @@
 - **Session id:** 01a067d5-b67a-7d18-bd80-e7614a99232e
 - **Model:** qwen-token-plan-individual/qwen3.8-max
 - **Goal:** Establish architecture working mode (ADRs, session tracking,
-  architect persona) and start shared-understanding pass over the platform.
+  architect persona) and build shared understanding of the platform.
 
 ## Done this session
 
-- Created `adr/` with README, template, and first two accepted records:
-  - ADR-0001: Go stdlib-only + HTMX stack
-  - ADR-0002: Docker deployment (details open)
-- Created `sessions/` tracker with `update-usage.sh`
-- Created architect persona: `.pi/agents/sleipnir-architect.md`
+- Created `adr/` (README, TEMPLATE), `sessions/` tracker + `update-usage.sh`,
+  architect persona `.pi/agents/sleipnir-architect.md`, `docs/VISION.md`.
+- Architecture round 1 answered by product owner; decisions recorded:
+  - ADR-0001: Go stdlib-only + HTMX (fixed constraint)
+  - ADR-0002: Docker deployment
+  - ADR-0003: Self-deployable, single-tenant; projects per client/engagement
+  - ADR-0004: Target focus AD/internal first; web later; purple team vision;
+    HackTheBox as dev test ground
+  - ADR-0005: Autonomy tiers (recon+research auto; exploit/initial access/
+    privesc gated by human approval), mandatory scopes, blacklist-beats-
+    allowlist, hard stop, OWASP + OWASP-LLM as design constraints
+  - ADR-0006: OpenAI-compatible LLM layer, local-first (Qwen), supported-model
+    list later, agent config locked during runs
+  - ADR-0007: Topology: Platform → per-job Orchestrator container → ephemeral
+    Worker containers; central logging; remote agent node (Raspberry Pi)
+  - ADR-0008: Tool registry wrapping external open-source tools
+  - ADR-0009: Evidence: central command log, screenshots, revert records +
+    approved cleanup run, HTML report + PDF option
 
-## Decisions
+## Decisions pending (round 2)
 
-See ADR-0001, ADR-0002.
-
-## Open questions (carried forward)
-
-See "Architecture questions round 1" below — asked at end of this session,
-answers pending.
-
-1. Product scope: who are the users, what target types (web/API/network)?
-2. Autonomy & safety model: fully autonomous vs human-on-the-loop.
-3. LLM integration: which model providers, self-hosted vs API.
-4. Agent topology: single loop vs multi-agent; tool/plugin model.
-5. Persistence strategy under the no-dependency constraint.
-6. Execution isolation: how scan workers run (Docker topology).
-7. Reporting & output contracts.
+- Persistence: product owner prefers PostgreSQL; constraint conflict under
+  stdlib-only Go — options laid out (single controlled dependency exception
+  vs. hand-rolled wire protocol vs. sidecar). ADR-0010 pending.
+- Approval queue details (timeout, channels, who may approve).
+- Remote agent: Docker-on-Pi vs. bare binaries; offline capability.
+- Screenshot evidence sources for the AD phase.
+- Platform roles & auth mechanism.
 
 ## Token usage
 
 | total input | uncached input | cache read | cache write | output | reasoning |
-| 141417 | 20969 | 120448 | 0 | 6389 | 2178 |
-| 27795 | 10131 | 17664 | 0 | 1376 | 743 |
+| 322553 | 37497 | 285056 | 0 | 17408 | 7239 |
+| 0 | 0 | 0 | 0 | 0 | 0 |
 
-_(snapshot taken during the session; re-run `sessions/update-usage.sh` at session end)_
+_(run `sessions/update-usage.sh sessions/2026-09-03-architecture-kickoff.md` at session end)_
