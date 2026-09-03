@@ -27,20 +27,38 @@
   - ADR-0009: Evidence: central command log, screenshots, revert records +
     approved cleanup run, HTML report + PDF option
 
-## Decisions pending (round 2)
+## Round 2 answers → decisions
 
-- Persistence: product owner prefers PostgreSQL; constraint conflict under
-  stdlib-only Go — options laid out (single controlled dependency exception
-  vs. hand-rolled wire protocol vs. sidecar). ADR-0010 pending.
-- Approval queue details (timeout, channels, who may approve).
-- Remote agent: Docker-on-Pi vs. bare binaries; offline capability.
-- Screenshot evidence sources for the AD phase.
-- Platform roles & auth mechanism.
+- ADR-0010: PostgreSQL via controlled exception (pgx, pinned+vendored),
+  store interface keeps driver swappable
+- ADR-0011: dual interface — HTMX UI + JSON API `/api/v1` as one control
+  plane (orchestrator/workers/Pi agent all consume it)
+- ADR-0012 (Proposed): notifications via signed webhooks (+optional SMTP);
+  approvals restricted to operators assigned to the engagement
+- ADR-0013: remote agent connectivity via tunnel/mesh tooling
+  (Tailscale/NetBird/chisel), tool choice deferred
+- ADR-0014: task-based model mix; start with Qwen Cloud, LM Studio/local
+  later; per-run model snapshot required
+- ADR-0015 (Proposed): own minimal agent loop in stdlib Go instead of
+  embedding pi/opencode in worker containers
+- Confirmed: agent config immutable while jobs run (ADR-0006 closed-door);
+  cleanup needs explicit approval, non-revertable effects documented
+  (ADR-0009); screenshots/evidence via headless browser where possible;
+  roles admin/operator/viewer + TOTP for v1
+- New: headless-browser capability implies a separate browser-enabled
+  worker image (image strategy → tool-registry follow-up)
+
+## Decisions pending / next sessions
+
+See `sessions/BACKLOG.md`. Queue: handover contracts, program layout,
+UI design, remote agent (Pi), agent loop design, persistence schema.
+Awaiting product owner: approval-timeout behavior, notification channel
+priority, confirmation of ADR-0012 and ADR-0015.
 
 ## Token usage
 
 | total input | uncached input | cache read | cache write | output | reasoning |
-| 322553 | 37497 | 285056 | 0 | 17408 | 7239 |
+| 545395 | 51315 | 494080 | 0 | 27618 | 11910 |
 | 0 | 0 | 0 | 0 | 0 | 0 |
 
 _(run `sessions/update-usage.sh sessions/2026-09-03-architecture-kickoff.md` at session end)_
