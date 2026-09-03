@@ -79,13 +79,21 @@ security hardening, SSO.
 - ADR-0017 Proposed: spawn broker (orchestrator never touches runtime)
 - ADR-0018 Proposed: approval binding (fingerprint + execution-time
   re-validation)
-- Triage added to review: no technical blockers; decisions-before-code =
-  ADR-0017 + ADR-0018; policy decision = data classification (A4); rest
-  are scheduled security flags
+## Round 6 — build agents + findings tracking
+
+- Backlog: adversarial findings A1–A15 now tracked with severity/class/
+  owner in session 7 table
+- Created build agents:
+  - `.pi/agents/sleipnir-principal.md` (qwen3.8-max, decomposes, spawns
+    implementers in parallel, reviews, integrates, runs gates)
+  - `.pi/agents/sleipnir-implementer.md` (qwen3.8-flash, one scoped work
+    package, tests, honest reporting)
+- Awaiting product owner: confirm ADR-0017, ADR-0018, and the data-
+  classification policy (cloud models lab-only vs. customer engagements)
 
 ## Token usage
 
 | total input | uncached input | cache read | cache write | output | reasoning |
-| 1728579 | 90691 | 1637888 | 0 | 54242 | 21798 |
+| 2469266 | 104210 | 2365056 | 0 | 60365 | 24538 |
 
 _(run `sessions/update-usage.sh sessions/2026-09-03-architecture-kickoff.md` at session end)_

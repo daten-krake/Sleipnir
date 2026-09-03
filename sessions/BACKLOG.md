@@ -49,6 +49,27 @@ Event table is the spine. Includes: **hash-chained event log** (adversarial
 review A11), schema migrations strategy, retention columns.
 
 ### 7. Security hardening (from adversarial review 001)
+Findings tracker (details in `docs/adversarial-review-2026-09-03.md`):
+
+| Finding | Severity | Class | Tracked in |
+|---------|----------|-------|------------|
+| A1 prompt injection | CRIT | flag | this session |
+| A2 runtime escalation | CRIT | decision | ADR-0017 (awaiting confirm) |
+| A3 worker egress | CRIT | flag | this session → own ADR |
+| A4 LLM data leak | HIGH | policy | needs ADR after policy decision |
+| A5 approval manipulation | HIGH | decision | ADR-0018 (awaiting confirm) |
+| A6 API credentials | HIGH | flag | this session + API design |
+| A7 node theft/impersonation | HIGH | flag | this session + session 4 |
+| A8 stored credentials | HIGH | flag | this session + session 6 |
+| A9 own-web attacks | MED | flag | this session + AGENTS.md review bar |
+| A10 tool supply chain | MED | flag | this session + tool-registry work |
+| A11 evidence tampering | MED | flag | session 6 (hash-chained log) |
+| A12 cross-engagement leak | MED | flag | API contract test suite |
+| A13 jailbreak vs safety | MED | accepted | covered by design |
+| A14 availability/DoS | LOW | flag | API design session |
+| A15 insider abuse | LOW | flag | later (four-eyes option) |
+
+Work items:
 - Worker egress policy = target scope only (A3) → ADR.
 - Untrusted-content policy: marking, sanitization, UI rendering rules (A1/A9).
 - Job-scoped credential design (A6); secrets/credential handling (A8).
