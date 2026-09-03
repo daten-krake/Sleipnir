@@ -16,6 +16,30 @@ authority. Trust boundaries: T1 browser↔platform, T2 platform↔orchestrator/
 workers (API), T3 platform↔remote node, T4 everything↔LLM endpoints,
 T5 platform/agents↔target environment (hostile by definition).
 
+## Triage — blocker or flag? (2026-09-03)
+
+None of the findings is a **technical blocker**: the topology stands, and
+all mitigations are known, additive refinements. Three are **decisions that
+must be settled before the affected contracts/schemas are written**, because
+builder agents will implement whatever the contracts say and retrofitting
+security properties later is expensive:
+
+| Finding | Class | Why |
+|---------|-------|-----|
+| A1 prompt injection | security flag | core defense already designed (enforcement outside the model); remaining work = content policy, sanitization, telemetry → security session |
+| A2 runtime escalation | **decision before code** | shapes API contracts + component responsibilities → confirm ADR-0017 before contracts/program-layout sessions |
+| A3 worker egress | security flag | per-run network/firewall policy → deployment & remote-agent sessions |
+| A4 LLM data leak | **policy decision** | engagement data classification + provider policy → decide before engagement schema is written |
+| A5 approval manipulation | **decision before code** | approval/event schema + approval UI → confirm ADR-0018 before persistence/API sessions |
+| A6 API credential abuse | security flag | machine-credential design belongs to API design work |
+| A7 node theft/impersonation | security flag | remote-agent session |
+| A8 stored credentials | security flag | evidence schema + key handling → persistence + security sessions |
+| A9–A15 | security flags / process | scheduled across sessions (hardening, tool registry, CI discipline) |
+
+Why none is a hard blocker: the safety architecture puts all enforcement in
+the platform core (ADR-0005), so no finding requires redesigning the
+topology — every mitigation is an added control on an existing seam.
+
 ## Findings
 
 ### CRITICAL

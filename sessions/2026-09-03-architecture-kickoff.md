@@ -79,10 +79,13 @@ security hardening, SSO.
 - ADR-0017 Proposed: spawn broker (orchestrator never touches runtime)
 - ADR-0018 Proposed: approval binding (fingerprint + execution-time
   re-validation)
+- Triage added to review: no technical blockers; decisions-before-code =
+  ADR-0017 + ADR-0018; policy decision = data classification (A4); rest
+  are scheduled security flags
 
 ## Token usage
 
 | total input | uncached input | cache read | cache write | output | reasoning |
-| 1523939 | 84707 | 1439232 | 0 | 50340 | 19768 |
+| 1728579 | 90691 | 1637888 | 0 | 54242 | 21798 |
 
 _(run `sessions/update-usage.sh sessions/2026-09-03-architecture-kickoff.md` at session end)_
