@@ -115,9 +115,20 @@ security hardening, SSO.
 - Last open decision from the adversarial review closed — all CRITICAL/HIGH
   items are now decided or scheduled
 
+## Round 9 — closing items
+
+- ASCII logo created (`assets/sleipnir-logo.txt`, embedded in README):
+  eight legs under the eight letters of SLEIPNIR
+- New process rule: **everything goes through a PR from now on**
+  (`WORKFLOW.md`); only this session was allowed to push directly to main
+- Blog started: `blog/` with first post in the product owner's voice
+  (`2026-09-03-kicking-off-sleipnir.md`)
+- Session close: all adversarial-review decisions settled; next up =
+  handover contracts + program layout (principal + implementers)
+
 ## Token usage
 
 | total input | uncached input | cache read | cache write | output | reasoning |
-| 3515069 | 126397 | 3388672 | 0 | 75052 | 31657 |
+| 4306677 | 138741 | 4167936 | 0 | 82657 | 36069 |
 
 _(run `sessions/update-usage.sh sessions/2026-09-03-architecture-kickoff.md` at session end)_
