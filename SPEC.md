@@ -29,6 +29,8 @@ and remote on-site agent nodes (Raspberry Pi). See `docs/VISION.md`.
 | C6 | Exploitation / initial access / privilege escalation require human approval (2h expiry, configurable) | ADR-0005, ADR-0012 |
 | C7 | Agent configs immutable while jobs run | ADR-0006 |
 | C8 | Learning/memory strictly per-engagement; no cross-customer data flow | ADR-0016 |
+| C9 | Errors/logs descriptive and machine-traceable: origin function + correlation ids in every error, redaction mandatory, stdlib `slog` | ADR-0019 |
+| C10 | Idiomatic Go (Effective Go / Code Review Comments) is a hard review criterion | AGENTS.md |
 
 ## 3. Roles
 

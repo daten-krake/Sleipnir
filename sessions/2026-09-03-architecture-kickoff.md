@@ -88,12 +88,24 @@ security hardening, SSO.
     implementers in parallel, reviews, integrates, runs gates)
   - `.pi/agents/sleipnir-implementer.md` (qwen3.8-flash, one scoped work
     package, tests, honest reporting)
-- Awaiting product owner: confirm ADR-0017, ADR-0018, and the data-
-  classification policy (cloud models lab-only vs. customer engagements)
+- Awaiting product owner: the data-classification policy (cloud models
+  lab-only vs. customer engagements)
+
+## Round 7 — confirmations + error/logging + Go style
+
+- ADR-0017 and ADR-0018 → Accepted (backlog tracker updated)
+- New binding convention → ADR-0019 Accepted: descriptive errors +
+  granular logging (`internal/errs` captures origin function via
+  `runtime.Caller`; errors read `component.Function: what: ids: cause`;
+  stdlib `slog` with correlation attributes; log-or-return; secret
+  redaction); motivation: agent-built code must be agent-debuggable
+- `AGENTS.md`: idiomatic Go section + error/logging section added;
+  both build agents (principal/implementer) updated to enforce it;
+  SPEC.md constraints C9/C10 added
 
 ## Token usage
 
 | total input | uncached input | cache read | cache write | output | reasoning |
-| 2469266 | 104210 | 2365056 | 0 | 60365 | 24538 |
+| 3148179 | 119571 | 3028608 | 0 | 69991 | 29213 |
 
 _(run `sessions/update-usage.sh sessions/2026-09-03-architecture-kickoff.md` at session end)_

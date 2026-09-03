@@ -1,6 +1,6 @@
 # ADR-0018: Approval binding — fingerprint-based approvals with execution-time re-validation
 
-- **Status:** Proposed (arisen from adversarial review 001, findings A1/A5)
+- **Status:** Accepted (confirmed by product owner 2026-09-03; arisen from adversarial review 001, findings A1/A5)
 - **Date:** 2026-09-03
 - **Deciders:** architect proposing, product owner to confirm
 

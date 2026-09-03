@@ -18,6 +18,33 @@ working in this repo MUST follow this file.
   build step.
 - Do not introduce Docker-incompatible runtime assumptions.
 
+## Go style — idiomatic Go is mandatory
+
+- Write idiomatic Go per *Effective Go* and the *Go Code Review Comments*:
+  errors are values (handled explicitly, never discarded with `_`), early
+  returns over deep nesting, small interfaces (accept interfaces, return
+  structs), `context.Context` as first parameter where cancellation/IO is
+  involved, table-driven tests, no `init()` abuse, no panics for control
+  flow, no cleverness for its own sake — the next reader is an agent.
+- `gofmt`/`go vet` clean is a merge gate.
+- Middleware = `func(http.Handler) http.Handler`; prefer stdlib patterns
+  (`io.Reader`, `encoding/json`, `net/http`) over invented abstractions.
+
+## Error and logging conventions (ADR-0019) — binding
+
+- All errors are created/wrapped through `internal/errs` (captures the
+  originating function via `runtime.Caller`). Never use bare `errors.New`/
+  `fmt.Errorf` for returned errors.
+- Every returned error must read as
+  `component.Function: what was attempted: key identifiers: cause` and be
+  self-contained for troubleshooting from logs alone.
+- Structured logging via stdlib `log/slog` with subsystem loggers and
+  correlation attributes (engagement, run, job, node).
+- Log-or-return, never both: an error is logged exactly once, where it is
+  handled/decided.
+- Secrets (credentials, tokens) never appear in errors or logs; use the
+  redaction helpers and write tests proving it.
+
 ## Safety-critical code = high review bar
 
 The following areas are hand-rolled security code and are the most likely

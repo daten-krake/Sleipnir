@@ -19,6 +19,8 @@ Package layout of the monorepo given stdlib-only + pgx exception.
 - cmd/ tree: platform, remote-agent; internal/ boundaries
   (api, auth, store, orchestration, agents, tools, notify).
 - Where the Dockerfile/compose topology lives.
+- `internal/errs` + slog setup as a foundational first work package
+  (ADR-0019).
 
 ### 3. UI design (HTMX)
 Screens and flows.
@@ -54,10 +56,10 @@ Findings tracker (details in `docs/adversarial-review-2026-09-03.md`):
 | Finding | Severity | Class | Tracked in |
 |---------|----------|-------|------------|
 | A1 prompt injection | CRIT | flag | this session |
-| A2 runtime escalation | CRIT | decision | ADR-0017 (awaiting confirm) |
+| A2 runtime escalation | CRIT | ✅ decided | ADR-0017 Accepted |
 | A3 worker egress | CRIT | flag | this session → own ADR |
 | A4 LLM data leak | HIGH | policy | needs ADR after policy decision |
-| A5 approval manipulation | HIGH | decision | ADR-0018 (awaiting confirm) |
+| A5 approval manipulation | HIGH | ✅ decided | ADR-0018 Accepted |
 | A6 API credentials | HIGH | flag | this session + API design |
 | A7 node theft/impersonation | HIGH | flag | this session + session 4 |
 | A8 stored credentials | HIGH | flag | this session + session 6 |

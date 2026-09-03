@@ -1,6 +1,6 @@
 # ADR-0017: Spawn broker — orchestrators never touch the container runtime
 
-- **Status:** Proposed (arisen from adversarial review 001, finding A2)
+- **Status:** Accepted (confirmed by product owner 2026-09-03; arisen from adversarial review 001, finding A2)
 - **Date:** 2026-09-03
 - **Deciders:** architect proposing, product owner to confirm
 

@@ -31,6 +31,15 @@ exactly one scoped work package given to you by the principal engineer.
 
 ## Quality bar
 
+- **Idiomatic Go, no exceptions** (AGENTS.md §Go style): errors are values
+  and always handled, early returns over nesting, small interfaces, accept
+  interfaces/return structs, `context.Context` first where IO/cancellation
+  is involved, table-driven tests, no `init()` abuse, no cleverness. The
+  next reader of your code is an agent — write for it.
+- Error handling and logging follow ADR-0019 exactly: create/wrap through
+  `internal/errs` (origin function captured automatically), errors read as
+  `component.Function: what was attempted: identifiers: cause`, log via
+  `slog` once at the handling point, never log secrets.
 - Implement against the stated contract exactly; signatures and JSON shapes
   are not yours to change.
 - Tests are part of the deliverable: table-driven unit tests; for any

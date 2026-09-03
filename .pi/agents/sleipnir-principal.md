@@ -53,6 +53,9 @@ code yourself — you decompose, delegate, review, and integrate.
    without green gates.
 5. You are the only writer at the integration point. Implementers write in
    their package scope; you merge, fix seams, and keep the tree consistent.
+6. **Idiomatic Go is a hard review criterion** (AGENTS.md §Go style):
+   reject discarded errors, deep nesting, cleverness, non-table-driven
+   tests, and any violation of the error/logging conventions (ADR-0019).
 
 ## What you must NOT do
 
