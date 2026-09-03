@@ -1,8 +1,8 @@
 # ADR-0015: Agent runtime — own loop vs. embedding an existing harness
 
-- **Status:** Proposed (architect recommendation; product owner to confirm)
+- **Status:** Accepted (confirmed by product owner 2026-09-03)
 - **Date:** 2026-09-03
-- **Deciders:** architect proposing, product owner to confirm
+- **Deciders:** Product owner, architect
 
 ## Context
 
@@ -41,11 +41,19 @@ production agent runtime is our own thin, enforceable loop. The tool
 ecosystem angle returns later via the tool registry (ADR-0008), and Sleipnir
 tools could be exposed outward (e.g. MCP) in the purple-team phase.
 
+Confirmed by the product owner with an explicit requirement: the loop is
+**not a single pass** — it must support iteration, **self-correction and
+learning within the running engagement**, backed by a per-engagement
+knowledge structure (see ADR-0016).
+
 ## Consequences
 
 - **Positive:** safety model and evidence model are first-class; images stay
   lean; no foreign runtime supply chain.
 - **Negative:** upfront investment in the loop; must match harness-quality
   context/retry handling ourselves.
-- **Follow-ups:** agent loop design session (ties into the handover-contract
-  and program-layout sessions on the backlog).
+- **Follow-ups:**
+  - Agent loop design session (ties into the handover-contract and
+    program-layout sessions on the backlog), including retry/reflection
+    mechanics for self-correction.
+  - ADR-0016 (engagement context graph) is the loop's working memory.

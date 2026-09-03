@@ -8,9 +8,11 @@ travel with them. Reorder as needed; add new items at the bottom of the queue.
 ### 1. Handover contracts between agent stages
 How recon → research → exploitation → reporting hand off data to each other
 without bloating context.
+- Handovers are **views over the engagement context graph** (ADR-0016):
+  define which subgraph/summary each stage receives.
 - Schema of handover artifacts (findings list, hypotheses, evidence refs).
 - What the orchestrator sees vs. what stays in the event store.
-- Serialization format + size limits; summarization duties of workers.
+- Size limits; summarization duties of workers.
 
 ### 2. Program layout (Go module structure)
 Package layout of the monorepo given stdlib-only + pgx exception.
@@ -32,22 +34,28 @@ Screens and flows.
   to sites without internet.
 
 ### 5. Agent model & loop design
-Depends on ADR-0015 confirmation.
+ADR-0015 accepted; now concrete.
 - Agent profile schema (prompt, model, allowed tools, risk tiers).
-- Loop mechanics: context window management, retries, streaming.
+- Loop mechanics: context window management, retries, **self-correction /
+  reflection against the context graph (ADR-0016)**.
+- Bounded graph query API available to agents.
 - Relation of existing `Pen_Enumeration`/`Pen_Researcher` prototypes to
   platform agent profiles.
 
 ### 6. Persistence schema
 PostgreSQL schema (ADR-0010): projects, runs, events, evidence, approvals,
-users, tool registry. Event table is the spine.
+users, tool registry — plus the **context graph tables** (ADR-0016).
+Event table is the spine.
 
 ## Standing open questions
 
-- Approval timeout behavior when no operator responds: pause forever vs.
-  auto-expire after N hours? (belongs to session 3 / approval UX)
-- Notification channel priority: signed-webhook-only for v1, plus email?
-  (ADR-0012 proposed)
 - Offline capability of the Pi agent (session 4).
 - Which AD attack techniques are in/out of v1 tool registry scope
   (session with tool baseline).
+- Handling of quarantined out-of-scope discoveries (ADR-0016 follow-up).
+
+## Resolved (kept for history)
+
+- ~~Approval timeout~~ → 2h default, configurable per engagement (ADR-0012).
+- ~~Notification channel priority~~ → signed webhooks only for v1 (ADR-0012).
+- ~~Embedded coding-agent harness~~ → own loop confirmed (ADR-0015).

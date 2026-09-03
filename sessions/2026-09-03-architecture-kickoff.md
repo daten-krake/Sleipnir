@@ -48,17 +48,28 @@
 - New: headless-browser capability implies a separate browser-enabled
   worker image (image strategy → tool-registry follow-up)
 
-## Decisions pending / next sessions
+## Round 3 confirmations → decisions
+
+- ADR-0012 Accepted: notifications = signed webhooks only (v1); approval
+  timeout **2h default, configurable per engagement in the web GUI**;
+  expired actions return as `approval_expired` for replanning
+- ADR-0015 Accepted: own agent loop confirmed — "without a coding agent";
+  requirement added: loop must support iteration, self-correction and
+  learning within the running engagement
+- ADR-0016 Accepted (new): **engagement-scoped context graph** as agent
+  working memory — nodes/edges with provenance, policy-aligned with
+  scope/blacklist, learning strictly per-engagement, storage in PostgreSQL,
+  handovers as graph views
+- Backlog updated: handover session now anchored on graph views; resolved
+  questions archived
 
 See `sessions/BACKLOG.md`. Queue: handover contracts, program layout,
 UI design, remote agent (Pi), agent loop design, persistence schema.
-Awaiting product owner: approval-timeout behavior, notification channel
-priority, confirmation of ADR-0012 and ADR-0015.
+All round-3 questions answered.
 
 ## Token usage
 
 | total input | uncached input | cache read | cache write | output | reasoning |
-| 545395 | 51315 | 494080 | 0 | 27618 | 11910 |
-| 0 | 0 | 0 | 0 | 0 | 0 |
+| 972174 | 63374 | 908800 | 0 | 35457 | 14263 |
 
 _(run `sessions/update-usage.sh sessions/2026-09-03-architecture-kickoff.md` at session end)_
