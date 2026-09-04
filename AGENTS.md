@@ -10,8 +10,8 @@ working in this repo MUST follow this file.
 3. `DESIGN.md` — normative program layout and design guidelines
    (simplicity, functions, interfaces, tests, naming).
 4. `sessions/BACKLOG.md` — current work queue and open questions.
-5. `WORKFLOW.md` — PR / no-direct-push rules; agents bind themselves to
-   it since the hosting cannot enforce them mechanically.
+5. `WORKFLOW.md` — PR / no-direct-push rules (mechanically enforced by
+   GitHub branch rules since 2026-09-04).
 
 ## Hard constraints (same as SPEC.md §2)
 
