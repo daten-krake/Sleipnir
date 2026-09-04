@@ -1,41 +1,62 @@
 ---
 name: start-session
-description: Start (and close) a Sleipnir working session. Use when the user says they want to start the next session, pick up the backlog, or open a new working session in this repository. Loads the normative context, creates the session tracker record, and ends sessions with usage snapshot and next_steps handover.
+description: Start a new Sleipnir working session. Use when the user wants to start the next session, says "start session", or asks to pick up work in this repository. Triggers the session ritual: check housekeeping, read the normative context in the fixed order, collect all open tasks and questions, report them, then open the session tracker. Also defines how to close a session.
 ---
 
 # Sleipnir session lifecycle
 
-Every working session in this repo is tracked and leaves the repo ready for
-the next one. Follow the steps below in order.
+Starting a session is a ritual: load context **in the fixed order**, collect
+**every open task**, report it, then begin. Do not start any work before
+steps 1–4 are done and the goal is confirmed.
 
 ## Start
 
-1. **Housekeeping.**
-   - `git status` / `git fetch` — confirm a clean tree; note unpushed
-     commits and deal with them first.
-   - Read `next_steps.md` if it exists: it is the handover from the last
-     session (housekeeping items first, then the plan).
+### 1. Housekeeping check
 
-2. **Load normative context, in this order** (skip nothing):
-   1. `SPEC.md`
-   2. `adr/` — at minimum README + every ADR newer than the last session
-   3. `sessions/BACKLOG.md`
-   4. `AGENTS.md`, `WORKFLOW.md`
+- `git status` + `git fetch`: clean tree? unpushed commits or branches?
+  Pending PRs? Deal with leftovers before new work.
+- Read `next_steps.md` if present — it is the handover from the last
+  session (its housekeeping items come first).
 
-3. **Create the session tracker file** `sessions/YYYY-MM-DD-<topic>.md`
-   (see template below). Fill:
-   - **Session id:** `$PI_SESSION_ID`
-   - **Model:** `$PI_PROVIDER/$PI_MODEL`
-   - **Goal:** one or two sentences, taken from the top of the
-     `sessions/BACKLOG.md` queue or `next_steps.md`; confirm the goal with
-     the product owner before starting work.
-   - Snapshot initial token usage:
-     `./sessions/update-usage.sh sessions/<file>.md`
+### 2. Load normative context — fixed order, skip nothing
 
-4. **Set up the working branch** per `WORKFLOW.md`: everything (code,
-   ADRs, docs, spec) goes through a PR; branch name `<topic>/<short-slug>`.
-   New ADRs are numbered sequentially after the highest existing number and
-   start as **Proposed**.
+1. `SPEC.md` — the platform specification.
+2. `adr/` — at minimum `README.md` plus every ADR written or changed
+   since the last session; skim statuses of the rest.
+3. `DESIGN.md` — program layout + design guidelines.
+4. `sessions/BACKLOG.md` — the work queue.
+5. `AGENTS.md`, `WORKFLOW.md` — build rules and PR flow.
+
+Authority when they disagree: **ADR > SPEC > DESIGN**.
+
+### 3. Collect open tasks
+
+Gather into one list, each item with its source:
+
+- Session queue items in `sessions/BACKLOG.md` (numbered, in order).
+- "Standing open questions" from the backlog.
+- Housekeeping items from `next_steps.md` (pushes, credentials, checks).
+- Unfinished items in the latest session tracker file under `sessions/`
+  ("Open questions carried forward").
+- ADRs still `Proposed` (they need product owner decisions).
+
+### 4. Report and confirm the goal
+
+Present the open-task list compactly to the product owner, recommend the
+next item (top of the backlog queue unless `next_steps.md` says
+otherwise), and get the goal confirmed **before** creating files or
+branches.
+
+### 5. Open the session tracker
+
+Create `sessions/YYYY-MM-DD-<topic>.md` from the template below:
+
+- **Session id:** `$PI_SESSION_ID` · **Model:** `$PI_PROVIDER/$PI_MODEL`
+- **Goal:** the confirmed goal in one or two sentences.
+- Snapshot initial usage: `./sessions/update-usage.sh sessions/<file>.md`
+- Then set up the working branch per `WORKFLOW.md`
+  (`<topic>/<short-slug>`); new ADRs start as **Proposed**, numbered after
+  the highest existing number.
 
 ## Template
 
@@ -53,7 +74,7 @@ the next one. Follow the steps below in order.
 
 ## Decisions
 
-- <decision> → ADR-NNNN (Proposed/Accepted)
+- <decision> → ADR-NNNN (Proposed/Accepted) or DESIGN.md/SPEC.md change
 
 ## Open questions carried forward
 
@@ -71,12 +92,11 @@ _(run `sessions/update-usage.sh sessions/<file>.md` at session end)_
 ## Close (before ending a session)
 
 1. Update the tracker: Done / Decisions / carried-forward questions.
-2. Refresh `sessions/BACKLOG.md` (mark progress, add new queue items,
-   archive resolved questions).
-3. Write `next_steps.md` for the next session: housekeeping first
-   (pending pushes, credentials, model checks), then the plan with a
-   definition of done.
+2. Refresh `sessions/BACKLOG.md` (progress, new queue items, archive
+   resolved questions).
+3. Write `next_steps.md` for the next session: housekeeping first, then
+   the plan with a definition of done.
 4. Refresh usage: `./sessions/update-usage.sh sessions/<file>.md`
-5. Commit, push the branch, and make sure the PR exists
+5. Commit, push the branch, ensure the PR exists
    (`git push -o pull_request.create -o pull_request.title="..."` when no
    `gh` CLI is available); agent-authored PRs get the `agent-built` label.

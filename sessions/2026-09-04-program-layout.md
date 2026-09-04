@@ -3,9 +3,10 @@
 - **Date:** 2026-09-04
 - **Session id:** 01a06cf4-51a4-708f-a305-150a5d2ca1a5
 - **Model:** qwen-token-plan-individual/qwen3.8-max
-- **Goal:** Backlog session 2 — decide the Go program layout (ADR-0021),
-  extend the build rules in `AGENTS.md`, and add a pi skill
-  (`start-session`) that codifies how sessions are started and closed.
+- **Goal:** Backlog session 2 — decide the Go program layout as a
+  normative guideline file (`DESIGN.md`), extend the build rules in
+  `AGENTS.md`, and add a pi skill (`start-session`) that codifies how
+  sessions are started and closed.
 
 ## Done this session
 
@@ -25,8 +26,12 @@
 - `WORKFLOW.md`: GitHub branch protection is not possible on our hosting;
   the no-direct-push rule is enforced by discipline + agent compliance
   with SPEC/AGENTS/DESIGN/WORKFLOW.
-- New skill `.pi/skills/start-session/SKILL.md`: session start/close
-  ritual (read order, tracker template, usage snapshots, workflow).
+- New skill `.pi/skills/start-session/SKILL.md`: starting a session
+  triggers the ritual — housekeeping check, read SPEC → ADRs → DESIGN →
+  backlog → AGENTS/WORKFLOW in fixed order, collect **all open tasks**
+  (backlog queue, standing questions, next_steps items, carried-forward
+  questions, Proposed ADRs), report them, confirm the goal, then open the
+  tracker; plus the closing ritual.
 
 ## Decisions
 
