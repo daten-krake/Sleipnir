@@ -29,8 +29,9 @@
   consumer-interface exception for mandated seams, supply-chain PR gate
   (`go.mod`/`vendor/` check in WORKFLOW.md), SPEC §12.2 context list,
   backlog supersede note, GitHub-correct PR creation in the skill.
-- `WORKFLOW.md`: GitHub branch protection is not possible on our hosting;
-  the no-direct-push rule is enforced by discipline + agent compliance
+- `WORKFLOW.md`: no-direct-push rule. Branch protection initially deemed
+  unavailable, then **enabled by the product owner 2026-09-04** → rule is
+  enforced mechanically (GitHub branch rules) plus by agent compliance
   with SPEC/AGENTS/DESIGN/WORKFLOW.
 - New skill `.pi/skills/start-session/SKILL.md`: starting a session
   triggers the ritual — housekeeping check, read SPEC → ADRs → DESIGN →
