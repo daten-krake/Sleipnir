@@ -131,6 +131,6 @@
 
 | total input | uncached input | cache read | cache write | output | reasoning |
 |---|---|---|---|---|---|
-| 6044882 | 272210 | 5772672 | 0 | 97009 | 28050 |
+| 7174607 | 281039 | 6893568 | 0 | 100941 | 29946 |
 
 _(run `sessions/update-usage.sh sessions/2026-09-04-program-layout.md` at session end)_
