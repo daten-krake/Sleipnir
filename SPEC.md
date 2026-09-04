@@ -10,7 +10,9 @@
 ## 1. Product
 
 Sleipnir is a self-deployable, single-tenant, agent-driven pentest platform.
-v1 attacks internal networks and Active Directory; web-app testing and a
+v1 performs **internal pentesting** (recon, services, credentials, lateral
+movement, privilege escalation) with **Active Directory as the main
+emphasis**; web-app testing and a
 purple-team mode follow later. It must run on local AI (Qwen via
 OpenAI-compatible endpoints) and proves itself first on HackTheBox targets.
 Differentiators: tiered human approval for dangerous actions, a complete
@@ -178,8 +180,9 @@ Consequences that shape the design and the repo:
 1. **Contract-first.** Event schema, graph schema, `/api/v1` surface, and
    handover views are defined before the components that consume them, so
    builder agents can work in parallel against stubs and contract tests.
-2. **This repo is agent context.** `SPEC.md`, `adr/`, `docs/`, and
-   `AGENTS.md` are the build input; keep them normative and current.
+2. **This repo is agent context.** `SPEC.md`, `adr/`, `DESIGN.md`,
+   `AGENTS.md`, `WORKFLOW.md`, and `docs/` are the build input; keep them
+   normative and current.
 3. **Small, testable seams.** Every component hides behind an interface
    (store, llm provider, notify, spawn); high-risk hand-rolled code
    (auth, crypto, protocol parsing, streaming) requires RFC test vectors

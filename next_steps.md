@@ -1,73 +1,70 @@
-# NEXT STEPS — session 2026-09-04
+# NEXT STEPS — session 2026-09-05
 
-Goal of the day: **backlog sessions 1 + 2 — handover contracts and program
-layout**, executed by the build agents (`sleipnir-principal` spawning
-`sleipnir-implementer` in parallel), delivered as the first real PR.
+Goal: **freeze the contracts** so the build can fan out. Still no product
+code until contracts A0–A2 are frozen and PR #1 is merged.
 
-## 0. Housekeeping before anything else
+## 0. Housekeeping
 
-- [ ] **Push is pending:** local `main` has unpushed commits (from the
-      2026-09-03 session). Either push manually or set up credentials
-      (SSH key / PAT / `gh auth login`) for this environment.
-- [ ] **GitHub branch protection:** enable PR-only pushes on `main` in the
-      repo settings so `WORKFLOW.md` is actually enforced.
-- [ ] **Model check:** quick test spawn of `sleipnir-implementer` to
-      confirm `qwen3.8-flash` resolves on the provider.
+- [ ] **Review + merge PR #1** (`layout/program-layout`): DESIGN.md,
+      AGENTS.md/WORKFLOW.md rules, start-session skill. Merge makes the
+      design guidelines binding.
+- [ ] Model check: spawn `sleipnir-implementer` once to confirm
+      `qwen3.8-flash` resolves (carry-over).
 
-## 1. Context to load (read order)
+## 1. Context to load
 
-1. `SPEC.md` (normative; constraints C1–C11)
-2. `adr/` — especially ADR-0007 (topology), ADR-0016 (context graph),
-   ADR-0017 (spawn broker), ADR-0019 (errors/logging)
-3. `sessions/BACKLOG.md` — items 1 & 2 carry the open questions
-4. `AGENTS.md` — build rules for agents
+Use the `start-session` skill ritual (fixed read order). New since last
+session: the **Q1–Q15 decision record** in
+`sessions/2026-09-04-program-layout.md` — it is the input to every
+contract document.
 
-## 2. Session 1 — handover contracts (design first, ~decisions)
+## 2. Contract documents (principal leads)
 
-Decide, then record as ADR(s):
-- Handover = **view over the engagement context graph** (ADR-0016): define
-  the stage views — what `recon → research → exploitation → reporting`
-  each receive (node/edge types, summaries, size limits).
-- Summarization duty of workers: raw output stays in the event log;
-  handovers carry references + summaries only.
-- Schema for findings/hypotheses nodes (fields, severity, confidence,
-  provenance).
-- Contract shape: Go types + JSON representation (must serve both the
-  internal API and agent prompts).
+Build order (approved by product owner 2026-09-04, Q15):
 
-## 3. Session 2 — program layout
+1. **A0 — cross-cutting conventions** (principal writes himself): ID
+   scheme (`eng_`, `run_`, `evt_`, `node_`), canonical-JSON rules (used by
+   BOTH hash chains and approval fingerprints), error-kind → HTTP map,
+   pagination/cursor, RFC3339 UTC, ignore-unknown-fields rule.
+2. **A1 — events contract** (envelope + taxonomy + day-one chain fields,
+   per-engagement chains) and **A2 — graph contract** (closed node/edge
+   kinds incl. Finding + Hypothesis, provenance, quarantine, no-secret-
+   values rule) — the critical pair, provenance ties them.
+3. Fan out (super-minimal, junior-level packages per WORKFLOW.md):
+   A3 stage views · A4 `/api/v1` surface · A5 token contract ·
+   A6 bounded query (deferred — contract stub only) · A7 spawn/fingerprint
+   schemas · A8 config convention.
+4. Merge gate: shared contract-test suite (JSON round-trip, unknown-field
+   tolerance, negative cross-engagement tests).
 
-- Go module + package tree under stdlib-only + pgx exception:
-  `cmd/` (platform, remote-agent), `internal/` (api, auth, policy,
-  store, graph, events, orchestrator, agentloop, broker, notify, errs,
-  llm, tools).
-- `internal/errs` + slog setup as the **foundational first work package**
-  (ADR-0019) — implementable immediately with tests (origin-function
-  capture, redaction negative tests).
-- Where Dockerfiles/compose live; image list per SPEC §10.
+Each contract doc: one reviewable doc + Go type sketch + JSON schema,
+delivered as PR(s), labeled `agent-built`.
 
-## 4. How to run it
+## 3. New design topics queued by product owner (backlog 9–11)
 
-1. Architect (this persona) + product owner agree on the contract
-   decisions above (they are architecture, so decide them in chat first).
-2. Delegate to `principal`:
-   *"Implement backlog sessions 1+2: define the handover-contract types
-   and the program layout; build `internal/errs` + logging setup with
-   tests. Work on a branch, open a PR per WORKFLOW.md."*
-3. Principal decomposes and fans out implementers (disjoint packages:
-   e.g. `internal/errs`, contract types, layout scaffold).
-4. Review the PR together; merge; ADRs for anything newly decided.
+- **CI/CD pipeline design** (backlog 9): PR gates as pipeline steps,
+  reproducible vendored builds, image build/pin/sign (A10), release +
+  rollback.
+- **Monitoring & observability** (backlog 10): slog JSON export, health
+  endpoints, per-run metrics, alerting via signed webhooks, SIEM export.
+- **Model benchmarking & drift detection** (backlog 11): fixed benchmark
+  suite scored per model, drift thresholds + reaction (alert / quarantine
+  from role matrix); data sources = per-run model snapshots (ADR-0014) +
+  gateway egress metadata (ADR-0020).
 
-## 5. Definition of done for tomorrow
+Schedule these after contracts are frozen; all three are design sessions
+(ADRs/docs), not code.
 
-- [ ] Handover-contract ADR accepted
-- [ ] Program-layout ADR accepted
-- [ ] PR #1 open: layout scaffold + `internal/errs` + tests green
-- [ ] Session tracker entry for 2026-09-04 (with token usage)
+## 4. Definition of done for 2026-09-05
+
+- [ ] PR #1 merged
+- [ ] A0 written; A1 + A2 drafted as PRs
+- [ ] Fan-out packages briefed (super-minimal) or already fanned out
+- [ ] Session tracker + next_steps updated
 
 ## Carry-forward open questions
 
-- `qwen3.8-flash` availability check (see housekeeping)
-- Approval-timeout notification edge cases → UI design session
-- Masking scanner design → security hardening session
-- Pi offline buffering → remote agent session
+- `qwen3.8-flash` availability check
+- Handover-contract package placement (`internal/handoff`?) — falls out
+  of A3
+- CI/CD, observability, model benchmarks → backlog 9–11

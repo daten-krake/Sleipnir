@@ -16,11 +16,25 @@ without bloating context.
 
 ### 2. Program layout (Go module structure)
 Package layout of the monorepo given stdlib-only + pgx exception.
-- cmd/ tree: platform, remote-agent; internal/ boundaries
-  (api, auth, store, orchestration, agents, tools, notify).
+- `cmd/`: `platform`, `orchestrator`, `worker`, `remote-agent`; `internal/`
+  map per `DESIGN.md` §1 (earlier sketches in this item are superseded).
 - Where the Dockerfile/compose topology lives.
 - `internal/errs` + slog setup as a foundational first work package
   (ADR-0019).
+- 2026-09-04: layout + design guidelines are normative in **`DESIGN.md`**
+  (product owner: layout is a guideline doc, not an ADR); scaffold +
+  `internal/errs` = first PR.
+- 2026-09-04 (design interview): **all session-1 decisions locked** —
+  fixed stage views + capped 1-hop (no query endpoint v1); two node types
+  Finding/Hypothesis; hard-reject validation; size budgets as contract
+  constants; quarantined discoveries reported "not tested", removable;
+  permanent machine-token exclusion list; worker = report-only; no
+  automation keys v1 but findings JSON export yes; job-lifetime stateful
+  tokens; node tokens over mesh; single-use approvals; day-one hash
+  chaining per engagement with export block + logged override; full
+  `/api/v1` surface; additive-only versioning; spawn schemas
+  platform-derived. See session tracker 2026-09-04. Next: contract docs
+  A0–A8 (principal drafts A0; super-minimal fan-out).
 
 ### 3. UI design (HTMX)
 Screens and flows.
@@ -84,6 +98,22 @@ Work items:
 ### 8. SSO / OIDC
 Own session after platform core exists (enterprise P0; hand-rolled
 OIDC/JWT client, high-review bar).
+
+### 9. CI/CD pipeline design
+From PR gate to release: build (stdlib + vendored, reproducible), the
+WORKFLOW.md gates as pipeline steps, container image build/pin/sign
+pipeline (adversarial A10), versioning, rollback. Added 2026-09-04.
+
+### 10. Monitoring & observability
+Slog JSON export (ADR-0019 structure), health endpoints, per-run
+metrics, alerting over the existing signed-webhook channel, audit/SIEM
+export (enterprise gap list). Added 2026-09-04.
+
+### 11. Model benchmarking & drift detection
+Standing benchmark suite (fixed HTB-based task set) scored per model;
+per-run model snapshot (ADR-0014) + gateway egress metadata (ADR-0020)
+as the data source; define drift thresholds and reaction (alert,
+quarantine model from role matrix). Added 2026-09-04.
 
 ## Standing open questions
 

@@ -7,7 +7,11 @@ working in this repo MUST follow this file.
 
 1. `SPEC.md` — normative platform specification.
 2. `adr/` — binding decisions; never violate an Accepted ADR.
-3. `sessions/BACKLOG.md` — current work queue and open questions.
+3. `DESIGN.md` — normative program layout and design guidelines
+   (simplicity, functions, interfaces, tests, naming).
+4. `sessions/BACKLOG.md` — current work queue and open questions.
+5. `WORKFLOW.md` — PR / no-direct-push rules (mechanically enforced by
+   GitHub branch rules since 2026-09-04).
 
 ## Hard constraints (same as SPEC.md §2)
 
@@ -29,6 +33,13 @@ working in this repo MUST follow this file.
 - `gofmt`/`go vet` clean is a merge gate.
 - Middleware = `func(http.Handler) http.Handler`; prefer stdlib patterns
   (`io.Reader`, `encoding/json`, `net/http`) over invented abstractions.
+
+## Design guidelines (DESIGN.md) — binding
+
+The program layout and the rules for writing code (simplicity first,
+function/interface/naming/test/concurrency/config conventions) are
+normative in `DESIGN.md`. Read it before writing any Go; when SPEC.md,
+an ADR, and DESIGN.md conflict, ADR > SPEC > DESIGN.
 
 ## Error and logging conventions (ADR-0019) — binding
 
