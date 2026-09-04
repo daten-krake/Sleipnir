@@ -2,8 +2,11 @@
 
 Effective 2026-09-03 (decision by the product owner):
 
-1. **Everything goes through a pull request.** The `main` branch is
-   protected. No direct pushes — code, ADRs, docs, spec changes alike.
+1. **Everything goes through a pull request.** GitHub branch protection is
+   not available on our hosting, so this rule is enforced by discipline,
+   not by the platform: **no direct pushes to `main` — by anyone, agent or
+   human.** Agents bind themselves to `SPEC.md`, `AGENTS.md`, `DESIGN.md`,
+   and this file; a review-then-merge by the product owner is the gate.
 2. Branch naming: `<topic>/<short-slug>` (e.g. `layout/internal-errs`).
 3. One PR per work package or backlog session; keep them reviewably small.
 4. PR requirements:

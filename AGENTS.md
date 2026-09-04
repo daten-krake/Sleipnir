@@ -7,7 +7,9 @@ working in this repo MUST follow this file.
 
 1. `SPEC.md` — normative platform specification.
 2. `adr/` — binding decisions; never violate an Accepted ADR.
-3. `sessions/BACKLOG.md` — current work queue and open questions.
+3. `DESIGN.md` — normative program layout and design guidelines
+   (simplicity, functions, interfaces, tests, naming).
+4. `sessions/BACKLOG.md` — current work queue and open questions.
 
 ## Hard constraints (same as SPEC.md §2)
 
@@ -30,36 +32,12 @@ working in this repo MUST follow this file.
 - Middleware = `func(http.Handler) http.Handler`; prefer stdlib patterns
   (`io.Reader`, `encoding/json`, `net/http`) over invented abstractions.
 
-## Program structure (ADR-0021) — binding
+## Design guidelines (DESIGN.md) — binding
 
-- One module (`github.com/daten-krake/sleipnir`); thin `cmd/` binaries
-  (`platform`, `orchestrator`, `worker`, `remote-agent`): a `main` does
-  only flag/env parsing, wiring, and graceful shutdown — no logic.
-- All logic lives in `internal/` (foundation → domain → services →
-  application edges); dependencies point downward only; `api`/`ui` are
-  never imported by services; `internal/policy` imports no other service.
-- The pgx exception (ADR-0010) is imported **only** in
-  `internal/store/postgres`; every other package talks to store interfaces.
-- Deployment assets live under `deploy/` (Dockerfiles, compose); tests are
-  colocated with the code they test.
-
-## Build rules
-
-- **No package-level mutable state.** Dependencies are injected through
-  constructors (`NewX(deps...)`); accept interfaces, return structs.
-- **Documentation:** every package, exported type, function, and constant
-  carries a doc comment that starts with the identifier name. Every
-  package has a package comment stating its responsibility and its layer.
-- **Hermetic unit tests:** unit tests must not need network, Docker, or a
-  database; integration/contract tests that do are gated behind an
-  explicit opt-in (environment variable) and say so in a comment. Tests
-  are deterministic — no `time.Sleep` synchronization; inject clocks.
-- **Concurrency:** every goroutine has an owner and a termination path via
-  `context.Context`; no leaked goroutines, no unbounded channels. Shared
-  state is protected explicitly — document which lock guards what.
-- **Configuration:** environment variables, parsed once at the `cmd/`
-  edge and passed down as typed config structs; no `os.Getenv` below
-  `cmd/`.
+The program layout and the rules for writing code (simplicity first,
+function/interface/naming/test/concurrency/config conventions) are
+normative in `DESIGN.md`. Read it before writing any Go; when SPEC.md,
+an ADR, and DESIGN.md conflict, ADR > SPEC > DESIGN.
 
 ## Error and logging conventions (ADR-0019) — binding
 

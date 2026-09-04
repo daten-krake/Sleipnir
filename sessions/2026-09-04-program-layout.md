@@ -15,24 +15,28 @@
 - Housekeeping from `next_steps.md`: unpushed-commits item resolved
   (branch is up to date with origin); `gh` CLI not available in this
   environment → PRs are created via `git push -o pull_request.create`.
-- Drafted **ADR-0021 (Proposed)**: program layout — one Go module,
-  thin `cmd/` binaries (platform, orchestrator, worker, remote-agent),
-  `internal/` package map with layering rules, pgx quarantined to
-  `internal/store/postgres`, deployment assets under `deploy/`.
-- `AGENTS.md`: added binding sections — program structure & layering,
-  state/DI rule, documentation rule, hermetic-tests rule, concurrency
-  rule, config rule.
+- Drafted the program layout (backlog session 2). Product owner: the
+  layout is a guideline document, **not an ADR** → `DESIGN.md` created
+  (normative): module/cmd/internal structure, layering, plus concrete
+  design guidelines — simplicity first / no over-engineering, function,
+  interface, error, concurrency, config, test, and naming rules.
+- `AGENTS.md`: `DESIGN.md` added to the read-before-acting list and
+  referenced as binding; detailed rules live in DESIGN.md, not duplicated.
+- `WORKFLOW.md`: GitHub branch protection is not possible on our hosting;
+  the no-direct-push rule is enforced by discipline + agent compliance
+  with SPEC/AGENTS/DESIGN/WORKFLOW.
 - New skill `.pi/skills/start-session/SKILL.md`: session start/close
   ritual (read order, tracker template, usage snapshots, workflow).
 
 ## Decisions
 
-- ADR-0021 **Proposed** — awaiting product owner acceptance.
+- Program layout + design guidelines live in `DESIGN.md` (normative
+  guideline file), not in an ADR — product owner directive 2026-09-04.
 - Branch `layout/program-layout` → PR per WORKFLOW.md (`agent-built`).
 
 ## Open questions carried forward
 
-- ADR-0021 acceptance (flip Status, adjust if owner objects).
+- Architect review pass over DESIGN.md/AGENTS.md/WORKFLOW.md (this PR).
 - Handover-contract package placement (backlog session 1 feeds it).
 - GitHub branch protection still to be enabled by the product owner.
 - `qwen3.8-flash` availability check for `sleipnir-implementer`.

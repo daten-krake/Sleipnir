@@ -21,8 +21,9 @@ Package layout of the monorepo given stdlib-only + pgx exception.
 - Where the Dockerfile/compose topology lives.
 - `internal/errs` + slog setup as a foundational first work package
   (ADR-0019).
-- 2026-09-04: layout decided as **ADR-0021 (Proposed)**; binding build
-  rules added to `AGENTS.md`; scaffold + `internal/errs` = first PR.
+- 2026-09-04: layout + design guidelines are normative in **`DESIGN.md`**
+  (product owner: layout is a guideline doc, not an ADR); scaffold +
+  `internal/errs` = first PR.
 
 ### 3. UI design (HTMX)
 Screens and flows.
