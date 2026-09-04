@@ -62,7 +62,7 @@
 ## Token usage
 
 | total input | uncached input | cache read | cache write | output | reasoning |
-|---|---|---|---|---|---|
+| 2090593 | 131297 | 1959296 | 0 | 31587 | 14657 |
 | 0 | 0 | 0 | 0 | 0 | 0 |
 
 _(run `sessions/update-usage.sh sessions/2026-09-04-program-layout.md` at session end)_
