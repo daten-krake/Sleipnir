@@ -97,6 +97,7 @@ _(run `sessions/update-usage.sh sessions/<file>.md` at session end)_
 3. Write `next_steps.md` for the next session: housekeeping first, then
    the plan with a definition of done.
 4. Refresh usage: `./sessions/update-usage.sh sessions/<file>.md`
-5. Commit, push the branch, ensure the PR exists
-   (`git push -o pull_request.create -o pull_request.title="..."` when no
-   `gh` CLI is available); agent-authored PRs get the `agent-built` label.
+5. Commit, push the branch, and create the PR with `gh pr create`
+   (install/auth `gh` if missing) or via the GitHub UI — GitHub does not
+   support push options. **Verify the PR URL exists before closing the
+   session**; agent-authored PRs get the `agent-built` label.

@@ -17,19 +17,35 @@
   (Pi node). A `main` does only flag/env parsing, wiring, and graceful
   shutdown. No logic in `cmd/`.
 - **`internal/` — one concern per package:**
-  - Foundation: `errs`, `log` (ADR-0019 primitives; zero internal imports).
-  - Domain types: `events`, `graph`, `tools` — types + invariants, no I/O.
+  - Foundation: `errs`, `logging` (ADR-0019 primitives; zero internal
+    imports; `logging` avoids shadowing stdlib `log`/`log/slog`).
+  - Domain types: `events`, `graph`, `tools`, `evidence` — types +
+    invariants, no I/O.
   - Services: `store` (interfaces) + `store/postgres` (the **only** place
     importing pgx), `auth`, `policy` (scope/blacklist/approval/hard-stop
     enforcement), `broker`, `llm` (provider contract + gateway + masking),
-    `agentloop`, `notify`.
+    `agentloop`, `notify`, `apiclient` (typed `/api/v1` client for
+    orchestrator, worker, remote-agent: job-token auth, retries, SSE).
   - Application edges: `api` (`/api/v1` + SSE), `ui` (HTMX handlers +
     embedded templates/static), `orchestrator` (planning logic consumed by
     `cmd/orchestrator`).
 - **Layering — dependencies point downward only:**
   `cmd/` → application edges → services → domain types → foundation.
+  Same-level imports are allowed one-way only; no cycles.
   `api`/`ui` are never imported by services; `policy` imports no other
-  service (it is the chokepoint others call); no import cycles.
+  service (it is the chokepoint others call).
+- **Binary boundaries (security model — SPEC §4, ADR-0005/0017/0020):**
+  `cmd/orchestrator`, `cmd/worker`, and `cmd/remote-agent` may import only
+  foundation, domain types, `agentloop`, `apiclient`, and `llm` for shared
+  wire types (messages/tool calls) — model calls always go to the platform
+  LLM gateway over `/api/v1`; agent binaries contain no provider client,
+  no gateway logic, and no model-endpoint credentials. Platform-only
+  packages (`store`, `policy`, `auth`, `broker`, `notify`, `api`, `ui`)
+  are **never** imported by agent binaries — all enforcement happens
+  server-side with job-scoped tokens. One Go module cannot enforce this
+  at compile time; it is a review gate.
+- This map is the current state: adding a package within these layer and
+  boundary rules does not require amending this file.
 - Deployment assets live under `deploy/`: `deploy/docker/<image>.Dockerfile`
   (SPEC §10 image list) and `deploy/compose/`.
 - Tests are colocated (`*_test.go` next to the code); cross-package
@@ -48,8 +64,8 @@
   = call the concrete thing directly.
 - Prefer the boring stdlib solution. Cleverness is a review blocker, not
   an asset — the next reader is an agent.
-- If a function needs a long comment to explain why it exists, delete it
-  or inline it.
+- If a function needs a comment to justify its existence beyond restating
+  its name, delete it or inline it.
 
 ## 3. Functions
 
@@ -68,7 +84,9 @@
 
 - Accept interfaces, return structs.
 - Interfaces are small (1–3 methods) and defined **at the consumer**, not
-  the producer.
+  the producer. Exception: the ADR/SPEC-mandated seams (store, LLM
+  provider, notify, spawn) live next to their producer; split them into
+  narrow per-consumer interfaces where practical.
 - Domain types carry their invariants: construct via `NewX(...)` that
   validates; never hand out half-built values.
 - No package-level mutable state. Dependencies are injected through
@@ -76,16 +94,9 @@
 
 ## 5. Errors and logging
 
-Per ADR-0019, concretely:
-
-- Create/wrap errors only through `internal/errs` (`errs.New`, `errs.Newf`,
-  `errs.Wrap`, `errs.Wrapf`); never `errors.New`/`fmt.Errorf` for returned
-  errors. Attach an error kind at creation.
-- Every returned error reads
-  `component.Function: what was attempted: key identifiers: cause`.
-- Log-or-return, never both; the decision point logs exactly once, with
-  correlation attributes (`engagement`, `run`, `job`, `node`).
-- Redact secrets before they reach any error string or log line.
+Binding per ADR-0019; the full convention (errs API, error format,
+log-or-return, redaction) is canonical in `AGENTS.md` → "Error and logging
+conventions". DESIGN.md adds nothing beyond it.
 
 ## 6. Concurrency
 
@@ -98,8 +109,9 @@ Per ADR-0019, concretely:
 ## 7. Configuration
 
 - Environment variables, parsed once at the `cmd/` edge into typed config
-  structs and passed down. No `os.Getenv` below `cmd/`. No config files in
-  v1 unless an ADR says otherwise.
+  structs and passed down. No `os.Getenv` below `cmd/` (test files may read
+the integration opt-in flag, §8). No config files in v1 unless an ADR
+says otherwise.
 
 ## 8. Tests
 

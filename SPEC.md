@@ -178,8 +178,9 @@ Consequences that shape the design and the repo:
 1. **Contract-first.** Event schema, graph schema, `/api/v1` surface, and
    handover views are defined before the components that consume them, so
    builder agents can work in parallel against stubs and contract tests.
-2. **This repo is agent context.** `SPEC.md`, `adr/`, `docs/`, and
-   `AGENTS.md` are the build input; keep them normative and current.
+2. **This repo is agent context.** `SPEC.md`, `adr/`, `DESIGN.md`,
+   `AGENTS.md`, `WORKFLOW.md`, and `docs/` are the build input; keep them
+   normative and current.
 3. **Small, testable seams.** Every component hides behind an interface
    (store, llm provider, notify, spawn); high-risk hand-rolled code
    (auth, crypto, protocol parsing, streaming) requires RFC test vectors

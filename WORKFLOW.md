@@ -12,6 +12,8 @@ Effective 2026-09-03 (decision by the product owner):
 4. PR requirements:
    - links the backlog item / ADR(s) it implements,
    - `gofmt -l`, `go vet ./...`, `go build ./...`, `go test ./...` green,
+   - `go.mod` contains only the ADR-0010 exception list and `vendor/` is
+     consistent (`go mod verify`); any diff there requires a new ADR first,
    - tests included; safety/enforcement logic additionally needs negative
      tests (see `AGENTS.md`).
 5. Agent-built work: the **principal engineer** aggregates implementer

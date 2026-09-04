@@ -16,8 +16,8 @@ without bloating context.
 
 ### 2. Program layout (Go module structure)
 Package layout of the monorepo given stdlib-only + pgx exception.
-- cmd/ tree: platform, remote-agent; internal/ boundaries
-  (api, auth, store, orchestration, agents, tools, notify).
+- `cmd/`: `platform`, `orchestrator`, `worker`, `remote-agent`; `internal/`
+  map per `DESIGN.md` §1 (earlier sketches in this item are superseded).
 - Where the Dockerfile/compose topology lives.
 - `internal/errs` + slog setup as a foundational first work package
   (ADR-0019).

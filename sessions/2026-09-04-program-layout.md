@@ -12,7 +12,7 @@
 
 - Reviewed all 20 ADRs: consistent, all Accepted; no conflicts with
   SPEC.md found (ADR-0017/0018 carry a stale "proposed" wording in the
-  Deciders line — cosmetic only).
+  Deciders line — left untouched: ADRs are immutable once Accepted).
 - Housekeeping from `next_steps.md`: unpushed-commits item resolved
   (branch is up to date with origin); `gh` CLI not available in this
   environment → PRs are created via `git push -o pull_request.create`.
@@ -21,8 +21,14 @@
   (normative): module/cmd/internal structure, layering, plus concrete
   design guidelines — simplicity first / no over-engineering, function,
   interface, error, concurrency, config, test, and naming rules.
-- `AGENTS.md`: `DESIGN.md` added to the read-before-acting list and
-  referenced as binding; detailed rules live in DESIGN.md, not duplicated.
+- `AGENTS.md`: `DESIGN.md` and `WORKFLOW.md` added to the read-before-
+  acting list; DESIGN.md declared binding. Error/logging convention stays
+  canonical in AGENTS.md (per ADR-0019); DESIGN.md §5 points at it.
+- Architect review pass applied: binary-boundary security rule +
+  `apiclient` + `evidence` packages, `internal/log`→`logging` rename,
+  consumer-interface exception for mandated seams, supply-chain PR gate
+  (`go.mod`/`vendor/` check in WORKFLOW.md), SPEC §12.2 context list,
+  backlog supersede note, GitHub-correct PR creation in the skill.
 - `WORKFLOW.md`: GitHub branch protection is not possible on our hosting;
   the no-direct-push rule is enforced by discipline + agent compliance
   with SPEC/AGENTS/DESIGN/WORKFLOW.
@@ -41,9 +47,16 @@
 
 ## Open questions carried forward
 
-- Architect review pass over DESIGN.md/AGENTS.md/WORKFLOW.md (this PR).
+- Architect review pass over DESIGN.md/AGENTS.md/WORKFLOW.md — done this
+  session (findings M1/M2 + S1–S9 + N1–N7 applied).
 - Handover-contract package placement (backlog session 1 feeds it).
-- GitHub branch protection still to be enabled by the product owner.
+- Branch protection: PO directive 2026-09-04 — not possible on current
+  hosting; no-direct-push enforced by agent discipline (WORKFLOW.md §1).
+  Architect note: GitHub free plans DO support branch protection on
+  private repos since 2024 — verify repo-admin permissions; if available,
+  enable and restore enforced wording.
+- PR #1 to be pushed/created once `gh` credentials exist (PR creation via
+  `gh pr create` or GitHub UI — push options do not work on GitHub).
 - `qwen3.8-flash` availability check for `sleipnir-implementer`.
 
 ## Token usage
