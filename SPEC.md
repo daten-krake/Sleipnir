@@ -10,7 +10,9 @@
 ## 1. Product
 
 Sleipnir is a self-deployable, single-tenant, agent-driven pentest platform.
-v1 attacks internal networks and Active Directory; web-app testing and a
+v1 performs **internal pentesting** (recon, services, credentials, lateral
+movement, privilege escalation) with **Active Directory as the main
+emphasis**; web-app testing and a
 purple-team mode follow later. It must run on local AI (Qwen via
 OpenAI-compatible endpoints) and proves itself first on HackTheBox targets.
 Differentiators: tiered human approval for dangerous actions, a complete

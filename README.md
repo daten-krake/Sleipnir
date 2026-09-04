@@ -14,8 +14,10 @@ __________________________________________________
 
 # Sleipnir
 
-Automated, agent-driven pentesting platform. v1 focus: internal networks
-and Active Directory — with human approval gates on everything dangerous,
+Automated, agent-driven pentesting platform. v1 focus: **internal
+pentesting** — recon, services, credentials, lateral movement, privesc —
+with Active Directory as the main emphasis. Human approval gates on
+everything dangerous,
 full evidence logging, and revertable actions. Runs on local AI.
 
 - **Spec:** [`SPEC.md`](SPEC.md)
