@@ -39,28 +39,98 @@
   (backlog queue, standing questions, next_steps items, carried-forward
   questions, Proposed ADRs), report them, confirm the goal, then open the
   tracker; plus the closing ritual.
+- PR #1 pushed + created via GitHub API, labeled `agent-built` (branch
+  protection enabled by PO the same day; git credential helper wired to
+  `gh`; push options confirmed NOT to work on GitHub).
+- **Design interview (design day — no code):** architect + principal
+  prepared researched briefs; product owner decided all backlog-session-1
+  topics plus API/token/integrity contracts (Q1–Q15, full record below).
+- `WORKFLOW.md`: added the super-minimal/junior-level work-package rule
+  (PO directive).
+- Backlog: session 1 marked decided; new queue items 9 CI/CD, 10
+  monitoring/observability, 11 model benchmarking & drift detection.
 
 ## Decisions
 
 - Program layout + design guidelines live in `DESIGN.md` (normative
   guideline file), not in an ADR — product owner directive 2026-09-04.
-- Branch `layout/program-layout` → PR per WORKFLOW.md (`agent-built`).
+- Branch `layout/program-layout` → PR #1 (`agent-built`).
+- Branch protection enabled by PO → WORKFLOW.md mechanically enforced.
+
+### Design interview — locked decisions (Q1–Q15)
+
+- **Q1 Handover view mechanics:** fixed server-computed stage views +
+  capped 1-hop neighbor drill-down. **No free-form query endpoint in v1**
+  (additive later, no data migration needed). Review trigger: after first
+  real HTB engagement.
+- **Q2 Findings/hypotheses:** two separate typed node kinds, `Finding`
+  (severity, confidence, status, evidence refs) and `Hypothesis` (claim,
+  basis, status); revision via `supersedes` edges, never overwrite.
+- **Q3 Graph write strictness:** hard reject on schema violation +
+  bounded `Attrs` escape hatch; platform enforces size caps (truncate +
+  marker / `summary_too_large`), never trusts worker discipline.
+- **Q4 Size budgets (contract constants, change only via ADR):** stage
+  view ≤ 64 KiB JSON / ≤ 500 nodes; node summary ≤ 512 B; finding
+  summary ≤ 2 KiB; stage summary ≤ 2 KiB.
+- **Q5 Quarantined discoveries:** included in reporting handover, marked
+  *not tested*, non-actionable; operator can remove them from the report.
+- **Q6 Machine-token exclusion (permanent contract rule):** machine
+  principals never mutate engagement/scope/blacklist, never decide
+  approvals, never touch kill controls, user/settings/tool-registry
+  writes, or anything cross-engagement. Three enforcement layers:
+  scopes exclude the verbs → middleware hard-blocks the endpoints for
+  any machine principal → per-request engagement/run binding.
+- **Worker principal (addendum):** report-only — `events:append`,
+  `evidence:upload`, `task:result`; no graph access at all; graph writes
+  happen platform-side on ingest with platform-stamped provenance.
+- **Q7 v1 API cuts:** no external automation keys in v1 (scope design
+  stays additive for later); `GET /engagements/{id}/findings` JSON export
+  **included** in v1.
+- **Q8 Token rotation:** job-lifetime orchestrator token, stateful
+  (hash-only storage), instant revocation on hard stop / run end. No
+  rotation in v1.
+- **Q9 Node identity:** `slp_node_…` token over mesh transport; encrypted
+  local storage; per-engagement pairing; revoke/wipe commands. Node-theft
+  residual risk **accepted by PO**.
+- **Q10 Approval execution:** uniformly single-use — one approval =
+  exactly one execution; failed/changed actions re-queue.
+- **Q11 Event integrity:** hash chaining from day one (write-side),
+  per-engagement chains with genesis events; verification at startup and
+  before export; on failure: customer-facing exports blocked, internal
+  views flagged, **explicit operator override allowed — logged as event,
+  report stamped "integrity verification failed"**; no external timestamp
+  anchoring in v1 (self-recorded timestamps suffice).
+- **Q12 API surface:** full `/api/v1` from day one, gated by Q6 rule.
+- **Q13 Versioning:** additive-only `/api/v1`, clients ignore unknown
+  fields (contract-tested), breaking changes only via `/api/v2`; formal
+  deprecation window deferred until automation keys ship.
+- **Q14 Spawn request:** orchestrator sends tool id+version (registry
+  allowlist), capped untrusted task description, resource ask; platform
+  derives image digest + risk tier from registry; risky spawns wait on
+  approval.
+- **Q15 Build sequencing:** A0 conventions + A1 events + A2 graph frozen
+  first (principal drafts A0), then fan-out; work packages super-minimal
+  / junior-level (now a WORKFLOW.md rule); no coding until contracts
+  frozen.
 
 ## Open questions carried forward
 
-- Architect review pass over DESIGN.md/AGENTS.md/WORKFLOW.md — done this
-  session (findings M1/M2 + S1–S9 + N1–N7 applied).
-- Handover-contract package placement (backlog session 1 feeds it).
-- Branch protection: **enabled** by the product owner 2026-09-04
-  (GitHub branch rules); WORKFLOW.md restored to enforced wording.
-- PR #1: pushed + created via `gh` (PR creation via `gh pr create` or
-  GitHub UI — push options do not work on GitHub).
+- Contract documents A0–A8 to be drafted (next session; principal A0).
+- CI/CD, monitoring/observability, model benchmark & drift detection →
+  backlog items 9–11 (added by PO 2026-09-04).
 - `qwen3.8-flash` availability check for `sleipnir-implementer`.
+
+## Resolved this session
+
+- Architect review findings M1/M2 + S1–S9 + N1–N7 applied.
+- Branch protection **enabled** by PO 2026-09-04; WORKFLOW.md enforced.
+- PR #1 created via GitHub API (push options don't work on GitHub),
+  labeled `agent-built`.
 
 ## Token usage
 
 | total input | uncached input | cache read | cache write | output | reasoning |
-| 2090593 | 131297 | 1959296 | 0 | 31587 | 14657 |
-| 0 | 0 | 0 | 0 | 0 | 0 |
+|---|---|---|---|---|---|
+| 6044882 | 272210 | 5772672 | 0 | 97009 | 28050 |
 
 _(run `sessions/update-usage.sh sessions/2026-09-04-program-layout.md` at session end)_

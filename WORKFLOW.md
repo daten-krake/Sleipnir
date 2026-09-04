@@ -19,6 +19,11 @@ Effective 2026-09-03 (decision by the product owner):
 5. Agent-built work: the **principal engineer** aggregates implementer
    output on a branch, runs the gates, and opens the PR; a human reviews
    and merges. Agent-authored PRs must be labeled `agent-built`.
+   **Work packages must be super-minimal** (product owner directive
+   2026-09-04): one narrow concern each, the exact contract excerpt to
+   implement, files to touch, acceptance tests named explicitly, no
+   cross-package assumptions — executable by a junior developer without
+   architectural judgment.
 6. ADRs follow the same PR flow: proposed in the PR, accepted by the
    product owner's review comment/merge.
 

@@ -27,9 +27,9 @@ EOF
 )
 
 if grep -q '^| total input |' "$FILE"; then
-  # replace the existing data row following the header row
+  # keep header + separator, replace the data row after them
   awk -v rep="$LINE" '
-    /^\| total input \|/ { print; getline; print rep; next }
+    /^\| total input \|/ { print; getline; print; print rep; getline; next }
     { print }
   ' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE"
 else
