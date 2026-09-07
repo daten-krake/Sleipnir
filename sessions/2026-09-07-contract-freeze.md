@@ -25,6 +25,21 @@
 - `contracts/` created with `README.md`: doc lifecycle
   (Draft → Frozen → Implemented), uniform document shape, additive-only
   versioning, and the shared contract-test suite as the fan-out merge gate.
+- `contracts/A0-conventions.md` drafted (architect, 773 lines): closed id
+  scheme (`A0-1`, 11 prefixes, ULID-layout Crockford base32, stdlib-only) ·
+  canonical JSON (`A0-2`, RFC 8785 with two declared restrictions, 6
+  normative test vectors, exclusion lists, store-the-canonical-bytes rule) ·
+  13 error kinds → HTTP + envelope (`A0-3`) · cursors (`A0-4`) · ms-precision
+  UTC (`A0-5`) · the read/write unknown-field asymmetry (`A0-6`) · Q4 size
+  caps with mechanisms T/R (`A0-7`) · field/enum conventions (`A0-8`) ·
+  traceability table · 14 PO-confirm items.
+- A0 surfaced a real spec conflict (**A0-7.10**): the Q4 caps are not jointly
+  satisfiable for a maximal stage view (500 × 512 B ≈ 250 KiB ≫ 64 KiB, so
+  ~131 B per node) → A3 must define the composition rule; escalated to PO.
+- Process lesson: a 30-minute child budget is too tight for a contract doc of
+  this size — the A0 run timed out after writing the file but before
+  reporting. Relaunch uses 60 min + a "write the skeleton to disk in the
+  first 15 minutes" rule.
 - (append as work happens)
 
 ## Decisions
