@@ -24,6 +24,10 @@ Package layout of the monorepo given stdlib-only + pgx exception.
 - 2026-09-04: layout + design guidelines are normative in **`DESIGN.md`**
   (product owner: layout is a guideline doc, not an ADR); scaffold +
   `internal/errs` = first PR.
+- 2026-09-07: contract documents live in top-level **`contracts/`**
+  (`README.md` = lifecycle, document shape, shared contract-test merge
+  gate); A0 conventions + A1 events + A2 graph drafted as one PR
+  (`contracts/a0-a2-conventions`). A3–A8 fan-out briefs next session.
 - 2026-09-04 (design interview): **all session-1 decisions locked** —
   fixed stage views + capped 1-hop (no query endpoint v1); two node types
   Finding/Hypothesis; hard-reject validation; size budgets as contract
@@ -120,10 +124,14 @@ quarantine model from role matrix). Added 2026-09-04.
 - Offline capability of the Pi agent (session 4).
 - Which AD attack techniques are in/out of v1 tool registry scope
   (session with tool baseline).
-- Handling of quarantined out-of-scope discoveries (ADR-0016 follow-up).
 
 ## Resolved (kept for history)
 
 - ~~Approval timeout~~ → 2h default, configurable per engagement (ADR-0012).
 - ~~Notification channel priority~~ → signed webhooks only for v1 (ADR-0012).
 - ~~Embedded coding-agent harness~~ → own loop confirmed (ADR-0015).
+- ~~Handling of quarantined out-of-scope discoveries~~ → Q5 (2026-09-04):
+  included in the reporting handover marked *not tested*, non-actionable,
+  operator can exclude them from the report; contract clause in A2.
+- ~~`qwen3.8-flash` availability for `sleipnir-implementer`~~ → verified
+  2026-09-07 (smoke test ran; provider `qwen-token-plan`).
