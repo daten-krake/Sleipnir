@@ -236,24 +236,33 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   | V4 | `{"arr":[3,1,2,{"y":1,"x":2}],"obj":{},"e":[]}` | `{"arr":[3,1,2,{"x":2,"y":1}],"e":[],"obj":{}}` | 45 | `d66e67ee4f3bef3250a4b86aa3ea680d7c9a5545424cf4316a9cf917e39db521` |
   | V5 | `{"engagement_id":"eng_01m1y2whfhgbz06ays6dxnvyws","kind":"tool_invoked","recorded_at":"2026-09-07T14:03:22.481Z","seq":4711,"prev_hash":"9b74c9897bac770ffc029102a200c5de","hash":"03c8a7d2b9e4f1a6d5c0b8e7f2a1d4c3b6a9e8f7d0c1b2a3e4f5061728394a5b"}`<br>exclusions: `seq`, `prev_hash`, `hash` | `{"engagement_id":"eng_01m1y2whfhgbz06ays6dxnvyws","kind":"tool_invoked","recorded_at":"2026-09-07T14:03:22.481Z"}` | 113 | `3695e846ce9e48d6577c0a7ef48ace7b9d34e4ca498dc91aac4309b40c4e10cb` |
   | V6 | `{"😀":1,"\uFFFD":2}` (keys are U+1F600 and U+FFFD) | `{"�":2,"😀":1}` (the U+FFFD key is the three bytes `EF BF BD`; the escape appears only in the input column; len 18 and the published digest are correct) | 18 | `9fbfff35f05fb9c72de19e392d0a1b848acb4d6c42489709d709982d10dd883c` |
-  | V7 | `{"s":"a\u2028b\u2029c\u007fd"}` | `{"s":"a b cd"}` (U+2028, U+2029 and U+007F are literal bytes, not escapes) | 19 | `aedd6df88cc462fdbdc5788549d753c9b8c21ac8b9e16c51c72016cf564c3e85` |
-  | V8 | `{"s":"<a href=\"x\">&é\u2028"}` | `{"s":"<a href=\"x\">&é "}` (`<`, `>`, `&` literal; `\"` stays escaped per A0-2.7) | 28 | `63995ca86de5cce6f4d74df8e1d90aed78918aad912cc7c7feaff4d89fb15b2d` |
+  | V7 | `{"s":"a\u2028b\u2029c\u007fd"}` | `{"s":"a<2028>b<2029>c<7F>d"}` (placeholders for the literal bytes `E2 80 A8`, `E2 80 A9`, `7F` - not escapes) | 19 | `aedd6df88cc462fdbdc5788549d753c9b8c21ac8b9e16c51c72016cf564c3e85` |
+  | V8 | `{"s":"<a href=\"x\">&é\u2028"}` | `{"s":"<a href=\"x\">&é<2028>"}` (`<2028>` = the literal bytes `E2 80 A8`; `<`, `>`, `&` and é stay literal; `\"` stays escaped per A0-2.7) | 28 | `63995ca86de5cce6f4d74df8e1d90aed78918aad912cc7c7feaff4d89fb15b2d` |
 
   In V3 the canonical bytes contain literal UTF-8 `é` (2 B), `中` (3 B), `😀`
   (4 B), literal `<>&`, short escapes for newline/tab, `\u0001` in lowercase
   hex, and keys reordered `n`,`s`,`t`. In V6 the U+FFFD key is the three bytes
   `EF BF BD` \u2014 the escape appears only in the input column; len 18 and the
   published digest are correct. In V7 the canonical bytes carry a literal U+2028
-  (`E2 80 A8`), a literal U+2029 (`E2 80 A9`) and a literal U+007F (`7F`): all
-  three are invisible in a terminal, so verify by len 19 and the digest, not by
-  eye. In V8 `<`, `>`, `&` stay literal, `é` is `C3 A9`, U+2028 is `E2 80 A8`, and
+  (`E2 80 A8`), a literal U+2029 (`E2 80 A9`) and a literal U+007F (`7F`),
+  printed as `<2028>`, `<2029>`, `<7F>`: all three are invisible in a terminal,
+  so verify by len 19 and the digest, not by eye. In V8 `<`, `>`, `&` stay literal, `é` is `C3 A9`, U+2028 is printed
+  as `<2028>` and is the bytes `E2 80 A8`, and
   `\"` stays escaped because A0-2.7 requires it.
 
   **Notation, canonical-bytes column.** A `\uXXXX` sequence in that column is
   **literal text** when it is a required JSON escape under A0-2.7 (V3's
   `\u0001`; V8's `\"`, `\\`, and the `\n`/`\t` short escapes) and is otherwise
-  printed as **the character itself** (V6's U+FFFD key; V7's U+2028, U+2029 and
-  U+007F; V3's `é中😀`). Where a cell could be read both ways the `len` column
+  printed as **the character itself** (V6's U+FFFD key; V3's `é中😀`) -
+  **except** that a code point which is a line break or a C0/C1 control
+  (U+2028, U+2029, U+007F) is printed as an angle-bracket placeholder naming its
+  bytes: `<2028>` = `E2 80 A8`, `<2029>` = `E2 80 A9`, `<7F>` = `7F` (V7, V8).
+  _Reason: a raw U+2028/U+2029 inside a Markdown table row makes that row's line
+  count reader-dependent - Python's `str.splitlines` and several editors split on
+  them, `grep` and `awk` do not - so a normative vector would parse differently
+  per tool. The placeholder is a display form only: the canonical bytes carry the
+  real code points, and the `len` and `SHA-256` columns are the authority._
+  Where a cell could be read both ways the `len` column
   decides: V3 is 57 bytes only if `\u0001` is the six characters
   `\`,`u`,`0`,`0`,`0`,`1`, and V6 is 18 bytes only if its first key is the three
   bytes `EF BF BD` (the six-character reading would give 21 and a different
