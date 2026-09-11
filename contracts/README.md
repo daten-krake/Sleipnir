@@ -9,7 +9,9 @@ agents can work in parallel against stubs and contract tests.
 **Authority:** ADR > SPEC > DESIGN > contract. A contract never contradicts
 an Accepted ADR; it makes ADRs concrete and testable. Changing a **frozen**
 clause or constant requires a new ADR (or an explicit product owner decision
-recorded in a session tracker) plus a PR.
+recorded in a session tracker) plus a PR. **A0 gates every later contract;
+where A0 and A1–A8 disagree on a cross-cutting convention, A0 wins and the
+later document is defective.**
 
 ## Documents
 
@@ -86,6 +88,12 @@ suite exists and passes. It tests, at minimum:
   (SPEC C8, adversarial finding A12).
 - **Secret-free serialization** — no secret material appears in serialized
   events, graph nodes, error bodies, or logs (ADR-0019 §5, ADR-0020).
+- **Safety-path pairing** — every MUST / MUST NOT in A0–A8 that guards
+  authorization, integrity, approval, quarantine, egress or the kill path
+  carries a test id in the clause itself (`Tests: <Name>, <Name>`); one id MUST
+  be a positive test of the rule and one MUST be a negative test of the bypass
+  attempt named in the clause. A contract reaches `Frozen` only when every such
+  clause has both. The suite fails if a safety-path clause has no test id.
 
 The suite lives with the contract owner package (DESIGN §1: cross-package
 contract tests live with the contract owner) and is referenced by name in
