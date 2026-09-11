@@ -78,7 +78,10 @@ kind (A1-3.5).
 
 - **A1-1.2** The envelope is a canonicalized type: every one of the 17 keys
   appears on **every** event with its zero value (`""`, `0`, `false`, `[]`)
-  when unset — no `omitempty`, no absence, no `null` (A0-2.14, A0-8.3). This
+  when unset — no `omitempty`, no absence, no `null` (A0-2.14, A0-8.3). Every
+  slice and map field of a canonicalized type MUST be non-nil before marshaling;
+  the constructors initialize them to empty (A0-2.14). A canonical event document
+  containing `null` is a platform defect → `internal`. This
   overrides the general "unset optional field is absent" rule of A0-8.3 for
   events, because events are hashed. _`{"job_id":""}` and `{"job_id":…absent}`
   have different canonical bytes and therefore different digests; a producer
@@ -125,17 +128,42 @@ kind (A1-3.5).
 - **A1-2.1** `actor` has exactly three keys, all always present (A0-2.14):
   `type` (closed enum: `user` | `orchestrator` | `worker` | `platform` |
   `node`), `principal_id` (string), `component` (string, `""` unless
-  `type="platform"`).
+  `type="platform"`). A1-3.3's `actor (type, component)` column gives the
+  literal pair for every kind.
+
+  _BLOCK-A1-08 (⧉ byte-identical to A2 BLOCK-A2-10's mapping table):_
+
+  | A1 `actor.type` | A2 `principal_kind` | id shape (A0-1.2) |
+  |---|---|---|
+  | `platform` | `platform` | `""` |
+  | `orchestrator` | `orchestrator` | `job_` |
+  | `worker` | `worker` | `task_` |
+  | `node` | `node` | `slp_node_` |
+  | `user` | `user` | `usr_` (AM-1) |
+
+  One vocabulary, two documents: A2-5.3 adopts A1-2.1's list verbatim; `operator` is
+  renamed `user` and `operator_id` is renamed `user_id` platform-wide. The prose word
+  "operator" (a human role, SPEC §3) is unaffected — only the enum value changes.
+  `Tests: TestActorComponentIsEmptyForNonPlatform, TestActorVocabularyMatchesA2`.
 - **A1-2.2** `principal_id` is an A0-1.2 identifier selected by `type`, and
   MUST be validated per A0-1.5 at composition:
 
   | `type` | `principal_id` | `component` |
   |---|---|---|
-  | `user` | user principal id — A0-1.2 declares **no** user prefix; A1 requires `usr_` + A0-1.1 body (**A0 amendment request, §6.2**). A username or e-mail MUST NOT be used: both are mutable and both are personal data in a customer export | `""` |
+  | `user` | user principal id — A0-1.2 registers `usr_` (`^usr_B{26}$`, 30 B; **AM-1, resolved by default — §6.2**). A username or e-mail MUST NOT be used: both are mutable and both are personal data in a customer export | `""` |
   | `orchestrator` | the `job_` id of the orchestrator container | `""` |
   | `worker` | the `task_` id of the worker container | `""` |
   | `node` | the `slp_node_` id (Q9) | `""` |
   | `platform` | `""` | the platform subsystem that composed the event, from the closed list of A1-2.4 |
+
+  **AM-1 — resolved by default for the Freeze (PO confirm):** A0-1.2 registers the
+  human-principal prefix `usr_` (`^usr_B{26}$`, 30 B) and A0 §4 adds `KindUser`. A0
+  owns id *shapes*; delegating the spelling to A5 would split A0-1.5 validation
+  across two contracts. Every user-composed A1 kind (`actor.principal_id`, A1-2.2)
+  and every A2 operator write (`user_id`, A2-5.3) validates against it. The product
+  owner MUST confirm the prefix spelling before Frozen; it is additive-only
+  afterwards (A0-1.10). The identical sentence stands in A0 §6 and A2 §6.2
+  (BLOCK-PO8).
 
 - **A1-2.3** Only the platform composes events. `actor` is stamped from the
   authenticated principal and the request context; a client MUST NOT supply
@@ -144,6 +172,9 @@ kind (A1-3.5).
   of them in an append body is an unknown field on a write → `validation`
   naming the field (A0-6.2). _Q3/Q6: never trust client discipline; a
   self-declared actor is the cheapest possible audit forgery._
+  `Tests: TestClientCannotSupplyEnvelopeFields` (table over all 12 fields named
+  above → `validation` naming the field), `TestActorCannotBeForged`,
+  `TestUntrustedFlagCannotBeSupplied`.
 - **A1-2.4** `component` is a closed enum (A0-8.5) naming the platform
   subsystem, so an audit reader can attribute a platform-composed event
   without a code search (ADR-0019 §3 correlation, C9): `event_store` ·
@@ -162,11 +193,14 @@ kind (A1-3.5).
   does not match the token's is `forbidden` (403, principal-level, A0-3.1).
   A worker principal is **report-only** (Q6 addendum): `events:append`,
   `evidence:upload`, `task:result`, and no read scope (A1-8.4).
+  `Tests: TestRunBindingMismatchIsForbidden, TestWorkerAndNodeHaveNoReadScope`.
 - **A1-2.7** `actor.type="platform"` MUST NOT be selectable or reachable
   through `/api/v1` by any machine principal; platform-composed kinds
   (A1-3.4) are unreachable for them by construction. A user principal can
   trigger a platform-composed event only through the endpoint that performs
   the action (hard stop, override, quarantine) — never by appending.
+  `Tests: TestMachinePrincipalCannotReachIntegrityKinds,`
+  `TestPlatformActorNotSelectableViaAPI`.
 - **A1-2.8** Provenance for A2 (ADR-0016 §1) is the pair
   (`event_id`, `actor`) of the event that caused a graph write, carried into
   the graph row by the platform and echoed back in `graph_node_written` /
@@ -175,135 +209,204 @@ kind (A1-3.5).
 
 ### A1-3 · Closed event taxonomy
 
-- **A1-3.1** The event kind list is **closed** and complete on day one (39
+- **A1-3.1** The event kind list is **closed** and complete on day one (42
   kinds, below). An unknown or malformed `kind` on a write is hard-rejected
   with `validation` (A0-6.3, Q3); on a read a client MUST preserve the raw
   string and skip what it cannot handle (A0-6.3). Kind spelling follows
   A0-8.5: `^[a-z][a-z0-9_]{0,31}$`, `<subject>_<past_participle>`.
+  `Tests: TestKindListIs42AndClosed, TestUnknownKindIsRejectedOnWrite`.
 - **A1-3.2** Notation in the payload column: `name:type`; `(N)` = capped at N
   UTF-8 bytes of the decoded value (A0-7.3), mechanism per A1-4.5; `*` =
   untrusted-content field (A1-4.4); `64hex` = A0-2.15 digest; `enum{…}` =
   closed list (A0-8.5); `array[string]` = ordered string array (A1-4.7).
   Every listed field is **always present** with its zero value (A0-2.14);
   a field not listed MUST NOT appear (`validation`, A0-6.2).
-- **A1-3.3** "Composed by" names the principal whose action the event records
-  (= `actor.type`, A1-2.1) and the platform subsystem that writes the row
-  (= `actor.component` when `actor.type="platform"`). A platform subsystem
-  recording a client's request stamps the **client** as actor: `actor` answers
-  "who did this", never "who typed the row". Client-appendable kinds are
-  marked **C** and are the only kinds reachable via `events:append` (A1-7.4).
+- **A1-3.3** The `actor (type, component)` column gives, for every kind, the
+  literal pair the platform stamps (A1-2.1): the principal whose action the
+  event records is `actor.type`, and the platform subsystem that writes the row
+  is `actor.component` — `""` unless `actor.type="platform"`. A platform
+  subsystem recording a client's request stamps the **client** as actor:
+  `actor` answers "who did this", never "who typed the row". Client-appendable
+  kinds are marked **C** and are the only kinds reachable via `events:append`
+  (A1-7.4).
 
 **Integrity (Q11, A1-5/A1-6)**
 
-| Kind | Composed by | Payload fields | Source |
+| Kind | `actor (type, component)` | Payload fields | Source |
 |---|---|---|---|
-| `chain_genesis` | platform · `event_store` | `chain_spec:string` | Q11, A1-5.3 |
-| `chain_verified` | platform · `integrity` | `trigger:enum{startup,pre_export,on_demand}` `head_seq:int` `head_hash:64hex` `verified_count:int` `duration_ms:int` | Q11, A1-6.2 |
-| `chain_break_detected` | platform · `integrity` | `break_kind:enum{preimage_mismatch,link_mismatch,seq_gap,seq_disorder,duplicate_event_id,genesis_invalid,row_count_mismatch,engagement_mismatch}` `break_seq:int` `break_event_id:string` `expected_prev_hash:64hex` `actual_prev_hash:64hex` `verified_count:int` | A1-6.3, A11 |
-| `integrity_override` | user (admin) · `integrity` | `reason:string(512)*` `break_event_id:string` `scope:enum{export,internal_view}` | Q11, A1-6.5 |
+| `chain_genesis` | `(platform, "event_store")` | `chain_spec:string` | Q11, A1-5.3 |
+| `chain_verified` | `(platform, "integrity")` | `trigger:enum{startup,pre_export,on_demand}` `head_seq:int` `head_hash:64hex` `verified_count:int` `duration_ms:int` | Q11, A1-6.2 |
+| `chain_break_detected` | `(platform, "integrity")` | `break_kind:enum{preimage_mismatch,link_mismatch,seq_gap,seq_disorder,duplicate_event_id,genesis_invalid,row_count_mismatch,engagement_mismatch,head_regression}` `break_seq:int` `break_event_id:string` `expected_prev_hash:64hex` `actual_prev_hash:64hex` `verified_count:int` | A1-6.3, A11, A1-5.8 (`head_regression`) |
+| `integrity_override` | `(user, "")` — admin role only (A1-6.5) | `reason:string(512)*` `break_event_id:string` `scope:enum{export,internal_view}` | Q11, A1-6.5 |
+| `artifact_released` | `(user, "")` **or** `(platform, "integrity")` | `artifact_kind:enum{report_html,report_pdf,findings_json,evidence_bundle,verification_bundle}` `artifact_evidence_id:string` `head_seq:int` `head_hash:64hex` `integrity_state:enum{verified,failed_overridden}` `override_event_id:string` `recipient_ref:string(128)` | Q11, A1-6.6 (the export stamp as a chained event), A1-6.5 (single-use `scope:"export"` override) |
 
 **Engagement and run lifecycle (SPEC §5 steps 1–2, 8)**
 
-| Kind | Composed by | Payload fields | Source |
+| Kind | `actor (type, component)` | Payload fields | Source |
 |---|---|---|---|
-| `scope_changed` | user · `scope` | `change_kind:enum{allowlist_added,allowlist_removed,blacklist_added,blacklist_removed,roe_changed}` `entry:string(512)` `entry_hash:64hex` | C5, ADR-0005 |
-| `engagement_policy_changed` | user · `scope` | `policy_kind:enum{llm_data_policy,approval_timeout,model_role_matrix,risk_tier,notification_channel}` `old_value:string(128)` `new_value:string(128)` `affected_tool_id:string` | ADR-0020 §1, ADR-0012 §7, ADR-0008 |
-| `run_started` | user · `runtime` | `llm_data_policy:enum{local_only,cloud_masked,cloud_raw}` `approval_timeout_ms:int` `scope_snapshot_evidence_id:string` | SPEC §5.2, ADR-0020 §1 |
-| `run_ended` | platform · `runtime` | `end_reason:enum{completed,failed,cancelled,hard_stop}` `detail:string(512)*` | SPEC §5 |
-| `model_config_snapshotted` | platform · `llm_gateway` | `config_evidence_id:string` `matrix_hash:64hex` `role_count:int` | SPEC §7 (reproducibility) |
-| `job_spawned` | platform · `spawn_broker` | `spawn_request_event_id:string` `image_digest:string(256)` `network_name:string(128)` | ADR-0017 §3 |
-| `task_spawned` | platform · `spawn_broker` | `spawn_request_event_id:string` `tool_id:string` `tool_version:string(64)` `risk_tier:string(32)` `image_digest:string(256)` `approval_id:string` `network_name:string(128)` | Q14, ADR-0017 §2–§3 |
-| `container_started` | platform · `runtime` | `subject:enum{job,task}` `container_ref:string(128)` `image_digest:string(256)` | ADR-0007/0017 |
-| `container_killed` | platform · `runtime` | `subject:enum{job,task}` `container_ref:string(128)` `kill_reason:enum{completed,timeout,hard_stop,quota,node_lost,error,operator}` `exit_code:int` `duration_ms:int` | ADR-0005, ADR-0017 §3 |
-| `hard_stop_fired` | user · `runtime` | `stop_scope:enum{run,engagement}` `reason:string(512)*` `containers_killed:int` `respawn_blocked:bool` | ADR-0005, ADR-0012 §2 |
+| `engagement_created` | `(user, "")` | `client_ref:string(128)` `roe_evidence_id:string` `policy_evidence_id:string` `operator_count:int` | SPEC §5.1, ADR-0005. Composed at `seq` **1** of the engagement chain — `chain_genesis` stays the integrity anchor at `seq` 0 (A1-5.3) and carries no engagement metadata |
+| `scope_changed` | `(user, "")` | `change_kind:enum{allowlist_added,allowlist_removed,blacklist_added,blacklist_removed,roe_changed}` `entry:string(512)` `entry_hash:64hex` | C5, ADR-0005. A **global**-blacklist change is composed into every affected engagement chain (A1-4.2, adversarial C-04) |
+| `engagement_policy_changed` | `(user, "")` | `policy_kind:enum{llm_data_policy,approval_timeout,model_role_matrix,risk_tier,notification_channel}` `old_value:string(128)` `new_value:string(128)` `affected_tool_id:string` | ADR-0020 §1, ADR-0012 §7, ADR-0008 |
+| `run_started` | `(user, "")` | `llm_data_policy:enum{local_only,cloud_masked,cloud_raw}` `approval_timeout_ms:int` `scope_snapshot_evidence_id:string` | SPEC §5.2, ADR-0020 §1 |
+| `run_ended` | `(platform, "runtime")` | `end_reason:enum{completed,failed,cancelled,hard_stop}` `detail:string(512)*` | SPEC §5 |
+| `model_config_snapshotted` | `(platform, "llm_gateway")` | `config_evidence_id:string` `matrix_hash:64hex` `role_count:int` | SPEC §7 (reproducibility) |
+| `job_spawned` | `(platform, "spawn_broker")` | `spawn_request_event_id:string` `image_digest:string(256)` `network_name:string(128)` | ADR-0017 §3 |
+| `task_spawned` | `(platform, "spawn_broker")` | `spawn_request_event_id:string` `tool_id:string` `tool_version:string(64)` `risk_tier:string(32)` `image_digest:string(256)` `approval_id:string` `network_name:string(128)` `target_graph_node_id:string` | Q14, ADR-0017 §2–§3 |
+| `container_started` | `(platform, "runtime")` | `subject:enum{job,task}` `container_ref:string(128)` `image_digest:string(256)` | ADR-0007/0017 |
+| `container_killed` | `(platform, "runtime")` | `subject:enum{job,task}` `container_ref:string(128)` `kill_reason:enum{completed,timeout,hard_stop,quota,node_lost,error,operator}` `exit_code:int` `duration_ms:int` `stop_event_id:string` | ADR-0005, ADR-0017 §3 |
+| `hard_stop_fired` | `(user, "")` | `stop_scope:enum{run,engagement}` `reason:string(512)*` `containers_killed:int` `respawn_blocked:bool` | ADR-0005, ADR-0012 §2 |
+| `engagement_closed` | `(user, "")` | `close_reason:enum{completed,cancelled,abandoned}` `report_evidence_id:string` | SPEC §5 step 10 (the engagement ends after cleanup); the last user-composed fact of a chain |
 
 **Spawn request (Q14, ADR-0017 §2)**
 
-| Kind | Composed by | Payload fields | Source |
+| Kind | `actor (type, component)` | Payload fields | Source |
 |---|---|---|---|
-| `spawn_requested` | orchestrator · `spawn_broker` | `subject:enum{job,task}` `tool_id:string` `tool_version:string(64)` `task_description:string(2048)*` `cpu_millicores:int` `memory_bytes:int` `network:enum{run_isolated,target_only,none}` `risk_tier:string(32)` `image_digest:string(256)` `approval_id:string` | Q14, ADR-0017 §2 (platform derives digest + tier from the registry; `""` when validation failed before derivation) |
+| `spawn_requested` | `(orchestrator, "")` | `subject:enum{job,task}` `tool_id:string` `tool_version:string(64)` `task_description:string(2048)*` `cpu_millicores:int` `memory_bytes:int` `network:enum{run_isolated,target_only,none}` `risk_tier:string(32)` `image_digest:string(256)` `approval_id:string` `target_graph_node_id:string` | Q14, ADR-0017 §2 (platform derives digest + tier from the registry; `""` when validation failed before derivation) |
 
 **Command execution, evidence, results (ADR-0009 §1–§3, SPEC §5 steps 3, 7)**
 
-| Kind | Composed by | Payload fields | Source |
+| Kind | `actor (type, component)` | Payload fields | Source |
 |---|---|---|---|
-| `command_executed` **C** | worker / node | `command:string(2048)*` `target:string(256)*` `tool_id:string` `tool_version:string(64)` `exit_code:int` `duration_ms:int` `output_bytes:int` `output_evidence_id:string` `redacted:bool` | ADR-0009 §1: command, output **reference**, actor (envelope), target, timestamp (envelope) |
-| `evidence_stored` | platform · `evidence` | `evidence_id:string` `evidence_kind:enum{command_output,screenshot,file_capture,memory_dump,packet_capture,browser_session,config_snapshot,report_artifact,other}` `media_type:string(128)` `size_bytes:int` `sha256:64hex` `source:enum{worker,node,orchestrator,browser,platform}` `redacted:bool` | ADR-0009 §2 |
-| `task_result` **C** | worker / node | `status:enum{succeeded,failed,partial}` `result_summary:string(2048)*` `duration_ms:int` `command_count:int` `revert_event_ids:array[string]` `error_kind:string` | Q6 worker scope `task:result` |
-| `revert_recorded` **C** | worker / node | `effect_kind:enum{account_created,account_modified,acl_changed,file_dropped,scheduled_task,service_installed,registry_edit,config_changed,credential_changed,persistence_added,other}` `target:string(256)*` `revert_action:string(2048)*` `revertable:bool` `tool_id:string` `state_change_evidence_id:string` | ADR-0009 §3. The revert record **is** the event: it is identified by its `event_id` (A0-1.2 declares no revert prefix and A1 adds none) |
+| `command_executed` **C** | `(worker, "")` **or** `(node, "")` | `command:string(2048)*` `target:string(256)*` `tool_id:string` `tool_version:string(64)` `exit_code:int` `duration_ms:int` `output_bytes:int` `output_evidence_id:string` `redacted:bool` | ADR-0009 §1: command, output **reference**, actor (envelope), target, timestamp (envelope) |
+| `evidence_stored` | `(platform, "evidence")` | `evidence_id:string` `evidence_kind:enum{command_output,screenshot,file_capture,memory_dump,packet_capture,browser_session,config_snapshot,report_artifact,other}` `media_type:string(128)` `size_bytes:int` `sha256:64hex` `source:enum{worker,node,orchestrator,browser,platform}` `redacted:bool` | ADR-0009 §2 |
+| `task_result` **C** | `(worker, "")` **or** `(node, "")` | `status:enum{succeeded,failed,partial}` `result_summary:string(2048)*` `duration_ms:int` `command_count:int` `revert_event_ids:array[string]` `error_kind:string` | Q6 worker scope `task:result` |
+| `revert_recorded` **C** | `(worker, "")` **or** `(node, "")` | `effect_kind:enum{account_created,account_modified,acl_changed,file_dropped,scheduled_task,service_installed,registry_edit,config_changed,credential_changed,persistence_added,other}` `target:string(256)*` `revert_action:string(2048)*` `revertable:bool` `tool_id:string` `state_change_evidence_id:string` | ADR-0009 §3. The revert record **is** the event: it is identified by its `event_id` (A0-1.2 declares no revert prefix and A1 adds none) |
 
 **Approvals (Q10, ADR-0018 §1–§4, SPEC §5 steps 5–6)**
 
-| Kind | Composed by | Payload fields | Source |
+| Kind | `actor (type, component)` | Payload fields | Source |
 |---|---|---|---|
-| `approval_requested` | orchestrator · `approval` | `approval_id:string` `fingerprint_hash:64hex` `tool_id:string` `tool_version:string(64)` `target:string(256)*` `action_summary:string(512)*` `risk_tier:string(32)` `expires_at:timestamp` `untrusted_context:bool` `request_event_id:string` | ADR-0018 §1 (fingerprint, prose *in addition*), §4 (`untrusted_context`), ADR-0012 §7 (`expires_at`) |
-| `approval_granted` | user · `approval` | `approval_id:string` `fingerprint_hash:64hex` `expires_at:timestamp` `single_use:bool` `queue_wait_ms:int` | ADR-0012 §1 (approver identity = envelope actor + platform time), Q10 (`single_use` is `true` for every v1 approval) |
-| `approval_denied` | user · `approval` | `approval_id:string` `fingerprint_hash:64hex` `reason:string(512)*` | ADR-0012 §1 |
-| `approval_expired` | platform · `approval` | `approval_id:string` `fingerprint_hash:64hex` `expires_at:timestamp` `queue_wait_ms:int` | ADR-0012 §7: orchestrator replans on `approval_expired` (A0-3.1) |
-| `approval_executed` | platform · `approval` | `approval_id:string` `fingerprint_hash:64hex` `revalidated:bool` `single_use_consumed:bool` `expires_at:timestamp` `tool_id:string` `tool_version:string(64)` `target:string(256)*` `action_summary:string(512)*` | ADR-0018 §2–§3 (execution-time re-validation, action + fingerprint recorded together), Q10 (consumption record) |
+| `approval_requested` | `(orchestrator, "")` | `approval_id:string` `fingerprint_hash:64hex` `action_spec_evidence_id:string` `target_graph_node_id:string` `argv_hash:64hex` `tool_id:string` `tool_version:string(64)` `target:string(256)*` `action_summary:string(512)*` `risk_tier:string(32)` `expires_at:timestamp` `untrusted_context:bool` `request_event_id:string` | ADR-0018 §1 (fingerprint, prose *in addition*), §4 (`untrusted_context`), ADR-0012 §7 (`expires_at`) |
+| `approval_granted` | `(user, "")` | `approval_id:string` `fingerprint_hash:64hex` `expires_at:timestamp` `single_use:bool` `queue_wait_ms:int` | ADR-0012 §1 (approver identity = envelope actor + platform time), Q10 (`single_use` is `true` for every v1 approval) |
+| `approval_denied` | `(user, "")` | `approval_id:string` `fingerprint_hash:64hex` `reason:string(512)*` | ADR-0012 §1 |
+| `approval_expired` | `(platform, "approval")` | `approval_id:string` `fingerprint_hash:64hex` `expires_at:timestamp` `queue_wait_ms:int` | ADR-0012 §7: orchestrator replans on `approval_expired` (A0-3.1) |
+| `approval_executed` | `(platform, "approval")` | `approval_id:string` `fingerprint_hash:64hex` `action_spec_evidence_id:string` `target_graph_node_id:string` `argv_hash:64hex` `revalidated:bool` `single_use_consumed:bool` `expires_at:timestamp` `tool_id:string` `tool_version:string(64)` `target:string(256)*` `action_summary:string(512)*` | ADR-0018 §2–§3 (execution-time re-validation, action + fingerprint recorded together), Q10 (consumption record) |
 
 **LLM traffic (ADR-0020 §2–§5, SPEC §7)**
 
-| Kind | Composed by | Payload fields | Source |
+| Kind | `actor (type, component)` | Payload fields | Source |
 |---|---|---|---|
-| `llm_call` | platform · `llm_gateway` | `model_role:enum{orchestrator,enumeration,research,summarizer}` `model_name:string(128)` `endpoint_name:string(128)` `egress_policy:enum{local_only,cloud_masked,cloud_raw}` `status:enum{ok,error}` `error_kind:string` `request_bytes:int` `response_bytes:int` `prompt_tokens:int` `completion_tokens:int` `masked_entity_count:int` `excluded_secret_count:int` `duration_ms:int` `request_evidence_id:string` `response_evidence_id:string` | ADR-0020 §2 (endpoint, model, payload size, policy applied — **metadata only**), §3 (`masked_entity_count`), §4 (`excluded_secret_count`), §5 (operator-visible egress log), ADR-0014 roles. `endpoint_name` is the configured name: a URL MUST NOT be stored (it may embed a credential, A0-3.7). `prompt_tokens`/`completion_tokens` are upstream-reported and untrusted-in-origin but are integers, so A1-4.4 does not apply; `egress_policy` values are ADR-0020's hyphenated names normalized to A0-8.5 |
+| `llm_call` | `(platform, "llm_gateway")` | `model_role:enum{orchestrator,enumeration,research,summarizer}` `model_name:string(128)` `endpoint_name:string(128)` `egress_policy:enum{local_only,cloud_masked,cloud_raw}` `status:enum{ok,error}` `error_kind:string` `request_bytes:int` `response_bytes:int` `prompt_tokens:int` `completion_tokens:int` `masked_entity_count:int` `excluded_secret_count:int` `duration_ms:int` `request_evidence_id:string` `response_evidence_id:string` | ADR-0020 §2 (endpoint, model, payload size, policy applied — **metadata only**), §3 (`masked_entity_count`), §4 (`excluded_secret_count`), §5 (operator-visible egress log), ADR-0014 roles. `endpoint_name` is the configured name: a URL MUST NOT be stored (it may embed a credential, A0-3.7). `prompt_tokens`/`completion_tokens` are upstream-reported and untrusted-in-origin but are integers, so A1-4.4 does not apply; `egress_policy` values are ADR-0020's hyphenated names normalized to A0-8.5 |
 
 **Graph mutation (ADR-0016 §1/§2/§4; the fields A2 must reference — A1-3.6)**
 
-| Kind | Composed by | Payload fields | Source |
+| Kind | `actor (type, component)` | Payload fields | Source |
 |---|---|---|---|
-| `graph_node_written` | platform · `graph` | `graph_node_id:string` `node_kind:string(32)` `source_event_id:string` `supersedes_graph_node_id:string` `quarantined:bool` `summary_bytes:int` `attrs_count:int` | ADR-0016 §1 (provenance), §4 (`supersedes`, never overwrite), Q2 |
-| `graph_edge_written` | platform · `graph` | `graph_edge_id:string` `edge_kind:string(32)` `from_graph_node_id:string` `to_graph_node_id:string` `source_event_id:string` `quarantined:bool` | ADR-0016 §1 |
-| `graph_node_quarantined` | user or platform · `graph` | `graph_node_id:string` `quarantine_kind:enum{out_of_scope_discovery,blacklist_match,operator_quarantine,operator_release}` `reason:string(512)*` `source_event_id:string` | ADR-0016 §2, C5, Q5 |
-| `quarantine_recomputed` | platform · `graph` | `trigger:enum{scope_changed,blacklist_changed,policy_changed}` `trigger_event_id:string` `nodes_evaluated:int` `nodes_quarantined:int` `nodes_released:int` `duration_ms:int` | A2-8.5 (a scope/blacklist change recomputes quarantine and the recomputation is itself recorded), ADR-0016 §2, C5. Per-node effects are separate `graph_node_quarantined` events; this event records the batch and its trigger |
-| `graph_edge_retracted` | user or platform · `graph` | `graph_edge_id:string` `edge_kind:string(32)` `from_graph_node_id:string` `to_graph_node_id:string` `reason:string(512)*` `source_event_id:string` | A2-3.9 (the only mutable edge field is always accompanied by an A1 event carrying the reason), ADR-0016 §4 (self-correction). `source_event_id` is the observation that contradicted the edge, `""` when operator-initiated |
-| `report_inclusion_changed` | user · `graph` | `graph_node_id:string` `included:bool` `reason:string(512)*` | Q5 (operator removes a quarantined discovery from the report). The flag itself is mutable graph state (A2) and MUST never be an order key (A0-4.3) |
+| `graph_node_written` | `(platform, "graph")` | `graph_node_id:string` `node_kind:string(32)` `source_event_id:string` `supersedes_graph_node_id:string` `quarantined:bool` `content_hash:64hex` `dedup_hit:bool` `summary_bytes:int` `attrs_count:int` | ADR-0016 §1 (provenance), §4 (`supersedes`, never overwrite), Q2, A2-4.6 (`content_hash`), A2-4.7 (`dedup_hit`) |
+| `graph_edge_written` | `(platform, "graph")` | `graph_edge_id:string` `edge_kind:string(32)` `from_graph_node_id:string` `to_graph_node_id:string` `source_event_id:string` `quarantined:bool` `dedup_hit:bool` | ADR-0016 §1, A2-4.7 (`dedup_hit`) |
+| `graph_node_quarantined` | `(user, "")` **or** `(platform, "graph")` | `graph_node_id:string` `quarantine_kind:enum{out_of_scope_discovery,blacklist_match,operator_quarantine}` `reason:string(512)*` `source_event_id:string` | ADR-0016 §2, C5, Q5. There is **no** `operator_release` value (A1-3.6, §6 item 18) |
+| `quarantine_recomputed` | `(platform, "graph")` | `trigger:enum{scope_changed,blacklist_changed,node_written,edge_written}` `trigger_event_id:string` `nodes_evaluated:int` `nodes_quarantined:int` `nodes_released:int` `duration_ms:int` | A2-8.5 (a scope/blacklist change recomputes quarantine and the recomputation is itself recorded), ADR-0016 §2, C5. Per-node effects are separate `graph_node_quarantined` events; this event records the batch and its trigger |
+| `graph_edge_retracted` | `(user, "")` **or** `(platform, "graph")` | `graph_edge_id:string` `edge_kind:string(32)` `from_graph_node_id:string` `to_graph_node_id:string` `reason:string(512)*` `source_event_id:string` | A2-3.9 (the only mutable edge field is always accompanied by an A1 event carrying the reason), ADR-0016 §4 (self-correction). `source_event_id` is the observation that contradicted the edge, `""` when operator-initiated |
+| `report_inclusion_changed` | `(user, "")` | `graph_node_id:string` `included:bool` `reason:string(512)*` | Q5 (operator removes a quarantined discovery from the report). The flag itself is mutable graph state (A2) and MUST never be an order key (A0-4.3) |
 
 **Cleanup / revert execution (ADR-0009 §4, SPEC §5 step 10)**
 
-| Kind | Composed by | Payload fields | Source |
+| Kind | `actor (type, component)` | Payload fields | Source |
 |---|---|---|---|
-| `cleanup_planned` | platform · `cleanup` | `plan_evidence_id:string` `revert_event_ids:array[string]` `non_revertable_event_ids:array[string]` `planned_action_count:int` `approval_id:string` | ADR-0009 §4 (plan from revert records, human approval), non-revertable effects documented |
-| `cleanup_executed` | platform · `cleanup` | `revert_event_id:string` `status:enum{reverted,failed,skipped}` `command_event_id:string` `detail:string(512)*` | ADR-0009 §4 |
-| `cleanup_verified` | platform · `cleanup` | `revert_event_id:string` `verified:bool` `verification_evidence_id:string` `detail:string(512)*` | ADR-0009 §4 (execute → verify) |
+| `cleanup_planned` | `(platform, "cleanup")` | `plan_evidence_id:string` `revert_event_ids:array[string]` `non_revertable_event_ids:array[string]` `planned_action_count:int` `approval_id:string` | ADR-0009 §4 (plan from revert records, human approval), non-revertable effects documented |
+| `cleanup_executed` | `(platform, "cleanup")` | `revert_event_id:string` `status:enum{reverted,failed,skipped}` `command_event_id:string` `detail:string(512)*` | ADR-0009 §4 |
+| `cleanup_verified` | `(platform, "cleanup")` | `revert_event_id:string` `verified:bool` `verification_evidence_id:string` `detail:string(512)*` | ADR-0009 §4 (execute → verify) |
 
 **Enforcement denials and agent errors (ADR-0005, C5/C9, ADR-0018 §2)**
 
-| Kind | Composed by | Payload fields | Source |
+| Kind | `actor (type, component)` | Payload fields | Source |
 |---|---|---|---|
-| `scope_denied` | requesting principal · `scope` | `action_kind:enum{tool_exec,spawn,graph_read,llm_call,api}` `attempted_target:string(256)*` `tool_id:string` `request_event_id:string` | ADR-0005 (a denied action is auditable), C5 allowlist |
-| `blacklist_denied` | requesting principal · `scope` | `action_kind:enum{tool_exec,spawn,graph_read,llm_call,api}` `attempted_target:string(256)*` `blacklist_entry:string(256)` `tool_id:string` `request_event_id:string` | C5: blacklist beats allowlist beats approval — separately filterable by design (A1-8.3) |
-| `action_blocked` | requesting principal · varying | `reason:enum{approval_consumed,approval_expired_at_exec,fingerprint_mismatch,image_not_allowed,quota_exceeded,hard_stop_active,node_not_paired,llm_egress_blocked,secret_excluded,graph_write_rejected,append_not_permitted,append_rejected,unknown_event_kind,token_revoked}` `action_kind:enum{tool_exec,spawn,graph_read,graph_write,llm_call,api,events_append}` `attempted_target:string(256)*` `detail:string(512)*` `tool_id:string` `approval_id:string` `request_event_id:string` | Q10 (`approval_consumed`), ADR-0018 §2 (`fingerprint_mismatch`), ADR-0017 §2 (image/quota), ADR-0020 §4 (`secret_excluded`), Q3 (`graph_write_rejected`, `unknown_event_kind`), A1-7.5 (`append_not_permitted`; `append_rejected` = a refused `events:append` — schema, cap or secret scan — stays observable, adversarial A1) |
-| `agent_error` | failing principal · `api` | `error_kind:string` `origin:string(128)` `message:string(512)*` `retryable:bool` | ADR-0012 §2 (`agent_error`), ADR-0019 §2–§3 (`origin` = `component.Function`, `message` already redacted per A0-3.7), C9 |
+| `scope_denied` | `(requesting principal's type, "")` | `action_kind:enum{tool_exec,spawn,graph_read,llm_call,api}` `attempted_target:string(256)*` `tool_id:string` `request_event_id:string` | ADR-0005 (a denied action is auditable), C5 allowlist |
+| `blacklist_denied` | `(requesting principal's type, "")` | `action_kind:enum{tool_exec,spawn,graph_read,llm_call,api}` `attempted_target:string(256)*` `blacklist_entry:string(256)` `tool_id:string` `request_event_id:string` | C5: blacklist beats allowlist beats approval — separately filterable by design (A1-8.3) |
+| `action_blocked` | `(requesting principal's type, "")` | `reason:enum{approval_consumed,approval_expired_at_exec,approval_metadata_mismatch,fingerprint_mismatch,target_quarantined,image_not_allowed,quota_exceeded,hard_stop_active,node_not_paired,llm_egress_blocked,secret_excluded,graph_write_rejected,append_not_permitted,append_rejected,unknown_event_kind,token_revoked}` `action_kind:enum{tool_exec,spawn,graph_read,graph_write,llm_call,api,events_append}` `attempted_target:string(256)*` `detail:string(512)*` `tool_id:string` `approval_id:string` `request_event_id:string` | Q10 (`approval_consumed`), ADR-0018 §2 (`fingerprint_mismatch`), ADR-0017 §2 (image/quota), ADR-0020 §4 (`secret_excluded`), Q3 (`graph_write_rejected`, `unknown_event_kind`), A1-7.5 (`append_not_permitted`; `append_rejected` = a refused `events:append` — schema, cap or secret scan — stays observable, adversarial A1) |
+| `agent_error` | `(failing principal's type, "")` | `error_kind:string` `origin:string(128)` `message:string(512)*` `retryable:bool` | ADR-0012 §2 (`agent_error`), ADR-0019 §2–§3 (`origin` = `component.Function`, `message` already redacted per A0-3.7), C9 |
 
 **Notification delivery (ADR-0012 §2–§6)**
 
-| Kind | Composed by | Payload fields | Source |
+| Kind | `actor (type, component)` | Payload fields | Source |
 |---|---|---|---|
-| `notification_sent` | platform · `notify` | `notification_kind:enum{approval_required,scan_started,scan_finished,agent_error,hard_stop_fired,cleanup_proposed}` `channel:enum{webhook,sse}` `target_name:string(128)` `delivery_status:enum{delivered,failed}` `attempt:int` `http_status:int` `duration_ms:int` `related_event_id:string` | ADR-0012 §2 (the six notification kinds, spelled as the ADR spells them), §6 (retries + delivery log are themselves audited events). `target_name` is the configured channel name: a webhook URL MUST NOT be stored (A0-3.7). These are **notification** kinds, distinct from A1 event kinds; only `hard_stop_fired` and `agent_error` exist in both vocabularies |
+| `notification_sent` | `(platform, "notify")` | `notification_kind:enum{approval_required,scan_started,scan_finished,agent_error,hard_stop_fired,cleanup_proposed}` `channel:enum{webhook,sse}` `target_name:string(128)` `delivery_status:enum{delivered,failed}` `attempt:int` `http_status:int` `duration_ms:int` `related_event_id:string` | ADR-0012 §2 (the six notification kinds, spelled as the ADR spells them), §6 (retries + delivery log are themselves audited events). `target_name` is the configured channel name: a webhook URL MUST NOT be stored (A0-3.7). These are **notification** kinds, distinct from A1 event kinds; only `hard_stop_fired` and `agent_error` exist in both vocabularies |
+
+The subsystem named in the Source column is the code path that writes the row;
+it appears in `actor.component` **only** when `actor.type="platform"` (A1-2.1).
+For every non-platform row `actor.component` is `""`. `actor` is inside the
+digest (A1-5.2).
+`Tests: TestActorComponentIsEmptyForNonPlatform`
+
+_BLOCK-A1-05 (⧉ identical decision content to A2 BLOCK-A2-08):_
+`action_blocked.reason` gains `target_quarantined` (additive): a spawn or action
+request cited a `gn_` id whose node is quarantined; refused **before** approval
+routing (A2-8.3, ADR-0018 §2). `quarantine_recomputed.trigger` is the closed list
+`scope_changed · blacklist_changed · node_written · edge_written` — the last two are
+the recomputations a new node or a new edge touching a quarantined node causes
+(A2-8.2).
+
+_BLOCK-A1-06 (⧉ identical decision content to A2 BLOCK-A2-04):_
+`graph_node_written` carries `content_hash:64hex` (the A2-4.6 fingerprint of the
+written node) and `dedup_hit:bool`; `graph_edge_written` carries `dedup_hit:bool`
+(edges have no fingerprint). A dedup collapse (A2-4.7) MUST still emit the event with
+`dedup_hit:true`, so the chain distinguishes "new evidence recorded" from "duplicate
+absorbed" — including every offline-node replay (ADR-0013).
 
 - **A1-3.4** Kinds marked **C** (`command_executed`, `task_result`,
   `revert_recorded`) are the only client-appendable kinds. Every other kind is
   platform-composed and unreachable through `events:append` for any machine
   principal → `forbidden` (A0-3.1, A1-7.4). _A worker that could append
   `approval_granted` would own the safety model._
+  `Tests: TestWorkerCannotAppendNonCKind` (each non-C kind → `forbidden` +
+  `action_blocked{append_not_permitted}`), `TestOrchestratorCannotClaimCommandExecuted`.
 - **A1-3.5** A kind is added only for an occurrence that must be independently
   filterable (A1-8.3) and independently reportable. Everything else is a
   payload field or a `reason`/`status` enum value inside an existing kind —
   `action_blocked` is the designated home for enforcement denials that do not
   deserve their own filter. Adding a kind is additive (A0-6.5); **reshaping an
   existing kind's payload is not** (A0-6.6, A1-4.1) — a written event's
-  canonical bytes are immutable.
+  canonical bytes are immutable. The three kinds this revision added under this
+  rule are `engagement_created`, `engagement_closed` and `artifact_released`
+  (T-01/T-02): the engagement envelope and every released artifact must be
+  independently filterable and independently reportable, and `artifact_released`
+  is the enforcement point of A1-6.5's single-use override.
 - **A1-3.6** A2 coordination (binding on A2): the graph-provenance field names
   A2 MUST reference and MUST NOT rename are `graph_node_id`, `graph_edge_id`,
   `node_kind`, `edge_kind`, `source_event_id`, `supersedes_graph_node_id`,
-  `from_graph_node_id`, `to_graph_node_id`, `quarantined`. A2 owns the closed
-  `node_kind`/`edge_kind` value lists; A1 stores the values as capped strings
-  (`string(32)`) so an A2 kind addition needs no A1 change (A0-6.5). A7
-  coordination: A1 stores `fingerprint_hash` and `risk_tier` as opaque values;
-  A7 owns their content and vocabulary.
+  `from_graph_node_id`, `to_graph_node_id`, `quarantined`, `content_hash`,
+  `dedup_hit`. A2 owns the closed `node_kind`/`edge_kind` value lists; A1 stores
+  the values as capped strings (`string(32)`) so an A2 kind addition needs no A1
+  change (A0-6.5). A7 coordination: A1 stores `fingerprint_hash`, `argv_hash`,
+  `action_spec_evidence_id` and `risk_tier` as opaque values — **A7 owns the
+  *content* of these fields, A1 their *presence*.**
+
+  _BLOCK-A1-04 (new bullet — ⧉ identical decision content to A2 BLOCK-A2-12):_
+  Quarantine vocabulary: A2 owns the **state** vocabulary (`quarantine_reason`:
+  `out_of_scope`, `blacklisted`); A1 owns the **occurrence** vocabulary
+  (`quarantine_kind`: `out_of_scope_discovery`, `blacklist_match`,
+  `operator_quarantine`). Mapping — `out_of_scope_discovery → out_of_scope` ·
+  `blacklist_match → blacklisted` · `operator_quarantine → (the reason already in
+  force)`. There is no `operator_release` value: a release is
+  `quarantine_recomputed{scope_changed}` plus the per-node recomputation, stored as
+  `quarantined:false` with `quarantine_reason` absent. The stored reason MUST be
+  derived by the platform from this mapping, never copied from an event string.
+  `Tests: TestQuarantineReasonIsDerivedFromKindMapping,`
+  `TestOperatorReleaseRejectedAsUnknownEnumValue`.
+
+  _BLOCK-A2-14 (⧉ byte-identical table; A2-1.6 owns it, cited here so the A1↔A2
+  field mapping reads the same from either document):_
+  One value, one name platform-wide (A0-3.6): a graph node is `graph_node_id` and a
+  graph edge is `graph_edge_id` in every JSON document, payload, error body and log
+  attribute; `node_id` remains the remote agent node (`slp_node_`, Q9). A2's served
+  field `id` is renamed accordingly (pre-Freeze, additive-only afterwards).
+
+  | A1 event payload field | A2 graph field (Go / JSON) |
+  |---|---|
+  | `graph_node_written.graph_node_id` | `Node.ID` / `graph_node_id` |
+  | `graph_edge_written.graph_edge_id` | `Edge.ID` / `graph_edge_id` |
+  | `from_graph_node_id` | `Edge.SourceID` / `source_id` |
+  | `to_graph_node_id` | `Edge.TargetID` / `target_id` |
+  | `supersedes_graph_node_id` | `Node.SupersedesID` / `supersedes_id` |
+
+  The originating worker/orchestrator of a graph write is **not** the event's
+  `actor`: `graph_node_written.actor` is `(platform, "graph")` and the producer is
+  carried by the node's `provenance.principal_kind` (A2-5.3). The two are expected
+  to differ — copying one into the other is a defect (PAIR-A2).
+  `Tests: TestFieldNameMappingIsTotal, TestPrincipalKindIsNotCopiedFromActor`.
 - **A1-3.7** SPEC §5 step coverage (completeness check, no normative force of
-  its own): 1 → `chain_genesis`, `scope_changed`, `engagement_policy_changed` ·
+  its own): 1 → `engagement_created`, `chain_genesis`, `scope_changed`,
+  `engagement_policy_changed` ·
   2 → `run_started`, `model_config_snapshotted`, `job_spawned`,
   `container_started` · 3 → `spawn_requested`, `task_spawned`,
   `command_executed`, `evidence_stored`, `task_result`, `graph_*` · 4 →
@@ -312,10 +415,12 @@ kind (A1-3.5).
   `approval_granted`/`_denied`/`_expired` · 7 → `command_executed`,
   `evidence_stored`, `revert_recorded`, `approval_executed` · 8 →
   `agent_error`, `llm_call`, `graph_*`, `container_killed` · 9 →
-  `chain_verified{pre_export}`, `integrity_override`,
+  `chain_verified{pre_export}`, `integrity_override`, `artifact_released`,
   `evidence_stored{report_artifact}` · 10 → `cleanup_planned`,
   `cleanup_executed`, `cleanup_verified`, `hard_stop_fired`. Step 1 also owns
-  `quarantine_recomputed{scope_changed}`, step 8 `graph_edge_retracted`.
+  `quarantine_recomputed{scope_changed}`, step 8 `graph_edge_retracted`;
+  `engagement_closed` follows step 10 — the engagement ends after its cleanup is
+  verified.
 
 - **A1-3.8** A2 cross-contract answers (binding on A2; A2 §6.9 and A2's
   "Cross-contract requests (not A0)"). Each request is confirmed or corrected
@@ -360,22 +465,25 @@ kind (A1-3.5).
   | `chain_verified` | `head_seq`/`head_hash` MUST equal the chain-head state at the end of the walk (A1-5.6); `verified_count` = events walked; MUST NOT be written for a chain with a known break (A1-6.2) |
   | `chain_break_detected` | `break_seq` is the **first** break in `seq` order (A1-6.3); `expected_prev_hash`/`actual_prev_hash` MUST both be present, equal when the break is not a link break |
   | `integrity_override` | `reason` MUST be non-empty — an override without a stated reason is `validation` (Q11: never silent); `break_event_id` MUST resolve in this engagement (A1-4.11) |
-  | `scope_changed` | `entry_hash` MUST be the A0-2.15 digest of `entry`, so a scope entry is comparable without echoing it into every report (ADR-0005 §2–§3) |
+  | `engagement_created` | composed at `seq` **1** of the chain (A1-5.3 keeps `chain_genesis` at `seq` 0 as the integrity anchor); `roe_evidence_id` and `policy_evidence_id` MUST be non-empty — an engagement whose rules of engagement are not an artifact is not reproducible (SPEC §7); `client_ref` is a customer-chosen label, never a person's name (A0-3.7) |
+  | `engagement_closed` | `report_evidence_id` MUST be non-empty when `close_reason:"completed"` and MAY be `""` for `cancelled`/`abandoned`; `close_reason` MUST be one of the three enum values (A1-4.12) |
+  | `artifact_released` | composed by the export path for **every** released customer-facing artifact (A1-6.6) and only after that path's `pre_export` walk; `head_seq`/`head_hash` MUST equal the values carried in the artifact's A1-6.6 metadata block (the last row the walk verified, A1-6.6); `integrity_state` is the A1-6.6 export enum, derived per A1-6.6's mapping table; `override_event_id` MUST be non-empty iff `integrity_state:"failed_overridden"` and MUST name the single-use override that released this artifact (A1-6.5); `artifact_evidence_id` MUST resolve in this engagement (A1-4.11) |
+  | `scope_changed` | `entry_hash` MUST be the A0-2.15 digest of `entry`, so a scope entry is comparable without echoing it into every report (ADR-0005 §2–§3). A **global**-blacklist change MUST also be composed as `scope_changed` into **every affected engagement chain**, with `change_kind:"blacklist_added"`/`"blacklist_removed"` and the `entry`/`entry_hash` of the global entry: the composing subsystem is `scope`, `actor` is the admin user (`(user, "")`, `usr_` id per §6.2) and `run_id` is `""`. Each engagement's `quarantine_recomputed{blacklist_changed}` MUST reference **that engagement's own** `scope_changed` event as `trigger_event_id`. `Tests: TestGlobalBlacklistChangeIsChainedPerEngagement, TestQuarantineRecomputedTriggerResolvesInEngagement` |
   | `run_started` | `llm_data_policy` MUST equal the engagement policy in force at start (ADR-0020 §1); `scope_snapshot_evidence_id` MUST be non-empty — a run without a scope snapshot is not reproducible (SPEC §7) |
-  | `job_spawned` / `task_spawned` | `image_digest` MUST be the registry-derived digest, never an orchestrator-supplied string (Q14, ADR-0017 §2); `spawn_request_event_id` MUST be non-empty |
-  | `spawn_requested` | `image_digest` and `risk_tier` are platform-derived from the registry (Q14) and are `""` only when validation failed before derivation; `task_description` is untrusted and capped (A1-4.4/4.5) |
-  | `container_killed` | `exit_code` is `-1` when no exit status exists (killed, timeout, node lost); `kill_reason:"hard_stop"` MUST be preceded in the chain by a `hard_stop_fired` event (ADR-0005 §4) |
+  | `job_spawned` / `task_spawned` | `image_digest` MUST be the registry-derived digest, never an orchestrator-supplied string (Q14, ADR-0017 §2); `spawn_request_event_id` MUST be non-empty; `task_spawned.target_graph_node_id` MUST equal the `spawn_requested` value for the same spawn (C-02/T-03: the target is cited by `gn_` id, never by string, A2-8.3) |
+  | `spawn_requested` | `image_digest` and `risk_tier` are platform-derived from the registry (Q14) and are `""` only when validation failed before derivation; `task_description` is untrusted and capped (A1-4.4/4.5); `target_graph_node_id` is `""` or a `gn_` id resolving in this engagement — the target of a spawn is **never** taken from a graph field, only cited by id so the quarantine check is on the id (A2-8.3) |
+  | `container_killed` | `exit_code` is `-1` when no exit status exists (killed, timeout, node lost). `container_killed{kill_reason:"hard_stop"}` MUST carry `stop_event_id:string` (`evt_`, the `hard_stop_fired` event it answers). The platform MUST commit `hard_stop_fired` **before** it issues any kill, in its own transaction, and MUST NOT block the kill on that commit (A1-7.12): if the commit fails the platform MUST kill anyway and MUST retry the append until it lands. The obligation is correlation by `stop_event_id`, not `seq` order; a `container_killed{hard_stop}` whose `stop_event_id` is empty or unresolvable is a platform defect → `internal` (A0-3.1) and MUST NOT delay the kill. The validator reads the run's hard-stop state held by `internal/policy`, never the chain (A1-7.12). `Tests: TestHardStopKillCarriesStopEventID, TestKillWithoutStopEventIDIsInternal` |
   | `command_executed` | `command` is the exact argv as executed, never a paraphrase (ADR-0009 §1 reproducibility); `output_evidence_id` MUST be non-empty when `output_bytes > 0`; `exit_code` ∈ `[-1, 255]`, `-1` = no exit status; `duration_ms` ≥ 0 |
   | `evidence_stored` | `evidence_id` MUST be the id returned by `evidence:upload` (ADR-0009 §2); `sha256` is the artifact-integrity digest and MUST be non-empty; `size_bytes` > 0 |
   | `task_result` | `status:"failed"` → `error_kind` non-empty and equal to an A0-3.1 kind (A1-4.12); `revert_event_ids` lists the `revert_recorded` events this task produced (ADR-0009 §3) and MAY be empty; `command_count` is the worker's own claim — the platform's count is derivable from the chain and a divergence is reportable, not a rejection |
   | `revert_recorded` | `revertable:false` → `revert_action` MAY be empty, and the effect MUST be carried forward into `cleanup_planned.non_revertable_event_ids` (ADR-0009 §4: non-revertable effects are documented, not dropped) |
-  | `approval_requested` | `fingerprint_hash` MUST be the A7 digest of the action (A1-3.6); `expires_at` is **platform-computed** at request time from the engagement's timeout (ADR-0012 §7) and MUST NOT be a caller value; `action_summary` is prose *in addition to* the fingerprint, never instead of it (ADR-0018 §1) |
+  | `approval_requested` | `fingerprint_hash` MUST be the A7 digest of the action (A1-3.6); `action_spec_evidence_id` MUST be non-empty — the platform stores the exact canonical bytes (A0-2) of the A7 action spec as a write-once evidence artifact at request time and records its id here and in `evidence_refs` (A1-7.3); `argv_hash` MUST be the A0-2.15 digest of the exact argv the spec will produce; `expires_at` is **platform-computed** at request time from the engagement's timeout (ADR-0012 §7) and MUST NOT be a caller value; `untrusted_context` is **platform-computed** (A1-4.4) and MUST NOT be a caller value; `action_summary` is prose *in addition to* the fingerprint, never instead of it (ADR-0018 §1), and MUST be composed only from platform vocabulary and the A7 action spec's own fields — copying model or tool prose into it is a laundering violation of A1-4.4. `Tests: TestApprovalRequestStoresActionSpecArtifact, TestUntrustedContextComputedNotSupplied` |
   | `approval_granted` / `_denied` / `_expired` / `_executed` | `fingerprint_hash` MUST equal the one on the `approval_requested` event with the same `approval_id` — the platform MUST refuse to compose a decision event whose fingerprint diverged (ADR-0018 §2); `single_use` is `true` for every v1 approval (Q10) |
-  | `approval_executed` | `revalidated` records the execution-time re-validation outcome and MUST be `true` for a successful execution (ADR-0018 §2–§3); `single_use_consumed` is the Q10 consumption record |
+  | `approval_executed` | `revalidated` records the execution-time re-validation outcome and MUST be `true` for a successful execution (ADR-0018 §2–§3); `single_use_consumed` is the Q10 consumption record; `action_spec_evidence_id` MUST equal the `approval_requested` value for the same `approval_id`, and `fingerprint_hash` MUST be the A0-2.15 digest of **exactly those artifact bytes** (A1-3.6, C-02); **`expires_at` on `approval_granted`, `approval_expired` and `approval_executed` MUST be byte-equal to the `approval_requested` value for the same `approval_id`** — divergence is a platform defect → `internal`, the execution is aborted, and `action_blocked{reason:"approval_metadata_mismatch"}` is recorded (a timeout-policy change MUST NOT affect an already-requested approval, ADR-0012 §7). A fingerprint that diverged at execution MUST be refused with **`conflict`** (409) naming `approval_id` and the first 8 hex characters of both digests, and MUST record `action_blocked{fingerprint_mismatch}`. The platform MUST consume the approval and authorize the execution **in one transaction** (or under the same per-engagement lock as A1-5.4's append), guarded by a uniqueness constraint on `(engagement_id, approval_id)` in the consumption table; a second attempt MUST fail **before** any container is created, with `conflict` (A0-3.1) and `action_blocked{reason:"approval_consumed"}`, and MUST NOT compose a second `approval_executed`. `Tests: TestApprovalFingerprintAndExpiryAreEqual, TestApprovalMetadataMismatchIsConflict, TestActionSpecArtifactIsChained, TestSingleUseApprovalRaceConsumesOnce` (N concurrent executions → exactly one `approval_executed`, N−1 `action_blocked{approval_consumed}`), `TestConsumedApprovalCannotSpawnAgain` |
   | `llm_call` | metadata only (ADR-0020 §2): the platform MUST NOT compose this kind with prompt or completion text in any field; `endpoint_name`/`model_name` are configured names, never a URL or a credential (A0-3.7); `status:"error"` → `error_kind` non-empty |
-  | `graph_node_written` / `graph_edge_written` | `source_event_id` MUST be non-empty — provenance is mandatory on the graph side (A2-5.1/5.4) and the event that carries it is its anchor |
-  | `graph_node_quarantined` | `quarantine_kind:"blacklist_match"` is not releasable (A2-8.5); `operator_release` MUST carry a non-empty `reason` |
-  | `quarantine_recomputed` | `trigger_event_id` MUST resolve to the `scope_changed` / `engagement_policy_changed` event that caused the recomputation (A2-8.5) |
+  | `graph_node_written` / `graph_edge_written` | `source_event_id` MUST be non-empty — provenance is mandatory on the graph side (A2-5.1/5.4) and the event that carries it is its anchor. `content_hash` MUST equal the A2-4.6 fingerprint of the written node (edges have no fingerprint — A2-4.6 is node-only); `dedup_hit` is `true` when the write collapsed into an existing row under A2-4.7, and a collapse MUST still emit the event. `node_kind` MUST be an A2-2.1 kind and `edge_kind` an A2-3.1 kind; because only the platform composes these kinds after a successful graph write, a violation is a platform defect → `internal`. `Tests: TestContentHashMatchesGraphFingerprint, TestDedupCollapseStillEmitsEvent` |
+  | `graph_node_quarantined` | `quarantine_kind:"blacklist_match"` is not releasable (A2-8.5); `operator_quarantine` MUST carry a non-empty `reason`. There is no `operator_release` value (A1-3.6) |
+  | `quarantine_recomputed` | `trigger_event_id` MUST resolve, in this engagement, to the event that caused the recomputation: the `scope_changed` event for `scope_changed`/`blacklist_changed` (A2-8.5, incl. the per-engagement copy of a global-blacklist change), or the `graph_node_written`/`graph_edge_written` event for `node_written`/`edge_written` (A2-8.2) |
   | `graph_edge_retracted` | `graph_edge_id` MUST resolve in this engagement; `reason` MUST be non-empty when the retraction is operator-initiated (A2-3.9) |
   | `cleanup_planned` | `approval_id` MUST be non-empty — a cleanup plan executes only after human approval (ADR-0009 §4) |
   | `cleanup_executed` / `cleanup_verified` | `revert_event_id` MUST resolve to a `revert_recorded` event; `status:"failed"` → `detail` non-empty |
@@ -383,6 +491,10 @@ kind (A1-3.5).
   | `action_blocked` | `reason` and `action_kind` MUST both be set; `detail` carries the human prose (A0-3.4) and is never parsed |
   | `agent_error` | `error_kind` is an A0-3.1 kind; `origin` is `component.Function` per ADR-0019 §2–§3; `message` is already redacted (A0-3.7, A1-4.9) |
   | `notification_sent` | `notification_kind` is the ADR-0012 §2 vocabulary, not an A1 kind (A1-3.3); `target_name` is the configured channel name, never a webhook URL (A0-3.7); `attempt` ≥ 1 |
+
+  Every `error_kind` field (`task_result`, `agent_error`, `llm_call`) MUST be
+  `""` or a byte-exact A0-3.1 kind; the per-kind non-empty obligations above are
+  additional; an unknown value is `validation` (A0-6.3).
 
 - **A1-4.3** A payload carries **references, never content**: `evi_` ids for
   artifacts (A1-1.7, ADR-0009 §2) and `evt_` ids for other events (A1-4.11).
@@ -426,6 +538,45 @@ kind (A1-3.5).
     autoescape every string field of every event. _A stored-XSS payload in an
     override reason is the same bug as one in a tool banner, and the platform
     has no interest in distinguishing them._
+  - `approval_requested.untrusted_context` is **platform-computed** on the same
+    rule and MUST NOT be a caller value: it MUST be `true` iff this payload has
+    any non-empty `*`-marked field, **or** iff the event referenced by
+    `request_event_id`/`spawn_request_event_id` (transitively) carries
+    `untrusted:true`. An approval whose context descends from injected prose is
+    flagged even when the action spec itself is pure platform vocabulary
+    (ADR-0018 §4).
+  - `action_summary` MUST be composed only from platform vocabulary and the A7
+    action spec's own fields; copying model or tool prose into it is a
+    laundering violation of this clause.
+  - The `*`-marked fields per kind, transcribed from A1-3.3 (normative: this
+    table is what `UntrustedFields` returns, §4.1):
+
+    | Kind | `*` fields |
+    |---|---|
+    | `integrity_override` | `reason` |
+    | `run_ended` | `detail` |
+    | `hard_stop_fired` | `reason` |
+    | `spawn_requested` | `task_description` |
+    | `command_executed` | `command`, `target` |
+    | `task_result` | `result_summary` |
+    | `revert_recorded` | `target`, `revert_action` |
+    | `approval_requested` | `target`, `action_summary` |
+    | `approval_denied` | `reason` |
+    | `approval_executed` | `target`, `action_summary` |
+    | `graph_node_quarantined` | `reason` |
+    | `graph_edge_retracted` | `reason` |
+    | `report_inclusion_changed` | `reason` |
+    | `cleanup_executed` | `detail` |
+    | `cleanup_verified` | `detail` |
+    | `scope_denied` | `attempted_target` |
+    | `blacklist_denied` | `attempted_target` |
+    | `action_blocked` | `attempted_target`, `detail` |
+    | `agent_error` | `message` |
+    | every other kind (23 of 42) | none |
+
+  `Tests: TestUntrustedFlagMatchesStarredFields, TestNoUntrustedTextInUnmarkedFields`
+  (per-kind source→target allowlist table), `TestApprovalViewFlagsUntrustedContext`,
+  `TestUntrustedFlagCannotBeSupplied`.
 
 - **A1-4.5** A0-7.7 obligation discharged: **every** capped A1 field class, its
   cap and its mechanism. A1 assigns **mechanism R (reject, A0-7.6) to every
@@ -436,7 +587,7 @@ kind (A1-3.5).
   | Prose, long — untrusted `*` fields | 2048 B | `command`, `task_description`, `result_summary`, `revert_action` | **R** |
   | Prose, medium — `*` fields plus operator-typed `entry` | 512 B | `reason` (all kinds), `detail`, `action_summary`, `message`, `entry` | **R** |
   | Target text — untrusted `*` fields | 256 B | `target`, `attempted_target`, `blacklist_entry` | **R** |
-  | Platform/config labels | 128 B | `origin`, `container_ref`, `network_name`, `media_type`, `model_name`, `endpoint_name`, `target_name`, `old_value`, `new_value` | **R** |
+  | Platform/config labels | 128 B | `origin`, `container_ref`, `network_name`, `media_type`, `model_name`, `endpoint_name`, `target_name`, `old_value`, `new_value`, `client_ref`, `recipient_ref` | **R** |
   | Registry-derived strings | 64 B / 32 B / 256 B | `tool_version` (64), `node_kind`/`edge_kind`/`risk_tier` (32), `image_digest` (256) | **R** |
   | Identifiers | A0-1.2 total length | every `*_id` field | regex **reject** → `validation` (A0-1.5), not a byte cap |
   | Digests | 64 chars | `*_hash`, `sha256` | A0-2.15/8.7 **reject** → `validation` |
@@ -455,6 +606,21 @@ kind (A1-3.5).
   over-cap summary costs a retry, never evidence. A0-7.3 measurement
   (decoded UTF-8 bytes of the value) and A0-7.8 (enforcement at platform
   ingest, never in the producer) apply unchanged. **PO confirm** (§6.3).
+  The **values** of every cap above live in the A0-7.1 registry (PAIR-N1, AM-2):
+  A1 cites the registry names — `ProseLongMaxBytes`, `ProseMediumMaxBytes`,
+  `TargetMaxBytes`, `LabelMaxBytes`, `ToolVersionMaxBytes`, `KindNameMaxBytes`,
+  `DigestMaxBytes`, `EvidenceRefsMax`, `EventRefsMax`, `ExitCodeMin`,
+  `ExitCodeMax`, `EventMaxCanonicalBytes`, `IdempotencyKeyMaxBytes` — and declares
+  no constant of its own (§4.1); this table is the mechanism assignment A0-7.7
+  requires of the owning contract.
+  A kind's **maximal payload** sets every string field to exactly its cap length
+  in bytes of U+0001 (worst case `\u0001` = 6 canonical bytes per input byte,
+  A0-2.7), every integer to its declared maximum, every array to its count cap
+  filled with maximum-length ids, every bool to `true`.
+  `TestMaximalPayloadFitsCanonicalBound` asserts
+  `len(Preimage(e)) ≤ EventMaxCanonicalBytes` for all **42** kinds under that
+  construction. `Tests: TestMaximalPayloadFitsCanonicalBound,`
+  `TestCapsRejectWithSummaryTooLarge`.
   _Note on the last row: with every field capped, the canonical bytes of any
   event are bounded by 6 × the largest decoded prose cap (A0-2.7's worst-case
   `\u00xx` expansion of a 2048 B control-character string = 12288 B) plus
@@ -465,7 +631,8 @@ kind (A1-3.5).
 
 - **A1-4.6** The `redacted` marker (`command_executed`, `evidence_stored`) MUST
   exist from day one even though the masking/redaction scanner is not designed
-  yet (A1 §2, security-hardening session). Semantics: `redacted:true` means a
+  yet (A1 §2, security-hardening session). `Tests: TestRedactedIsPlatformSetOnly,
+  TestRedactedNotUsedForTruncation`. Semantics: `redacted:true` means a
   **platform** redaction or masking step (ADR-0020 §3–§4) altered or withheld
   part of the referenced artifact or of the metadata recorded about it. It is
   platform-set only (A1-2.3), it is inside the digest, and it MUST NOT be used
@@ -479,19 +646,21 @@ kind (A1-3.5).
   every historical row would keep the old digest._
 
 - **A1-4.7** Arrays. Every A1 payload array is an ordered array of strings
-  (`array[string]` in A1-3.2) or of integers; the platform MUST sort it
+  (`array[string]` in A1-3.2); the platform MUST sort it
   **ascending by unsigned byte value** (A0-2.4's order, `COLLATE "C"` for
   stored text — A0-1.9) and MUST remove duplicates **at composition**, so two
   producers listing the same set yield identical canonical bytes. Clients MUST
   NOT rely on an input order being preserved: an append whose array is
   unsorted is normalized, not rejected. Count caps (mechanism R):
-  `evidence_refs` ≤ 8 (`EvidenceRefsMax`, matching A2-7.1's `EvidenceIDsMax`)
-  · `revert_event_ids` ≤ 64 · `non_revertable_event_ids` ≤ 64
-  (`EventRefsMax`). Exceeding a count → `summary_too_large` (A0-7.6) naming
+  `evidence_refs` ≤ `EvidenceRefsMax` (A0-7.1 registry)
+  · `revert_event_ids` and `non_revertable_event_ids` ≤ `EventRefsMax`
+  (A0-7.1 registry). Exceeding a count → `summary_too_large` (A0-7.6) naming
   the field, the cap and the actual count. _Sorting at composition is a
   determinism rule, not a convenience: `evidence_refs` is inside the digest
   (A1-1.1), so producer-dependent order would make the same logical event hash
   differently on two code paths._
+  `Tests: TestArraysSortedDedupedAtComposition, TestEvidenceRefsDerivation`
+  (one subtest per kind, incl. `evidence_stored`).
 
 - **A1-4.8** Flatness (A1-1.5). A payload is a JSON object whose values are
   strings, integers, booleans, or arrays of strings/integers. Nested objects,
@@ -502,6 +671,10 @@ kind (A1-3.5).
   belongs in the evidence store (A1-4.3). _Flat is what lets the shared suite
   check a kind's key set and value types by reflection over one struct, and
   what keeps a hashed document readable by a human auditor in a report._
+  Every slice and map field of a canonicalized type MUST be non-nil before
+  marshaling; the constructors initialize them to empty (A0-2.14). A canonical
+  event document containing `null` is a platform defect → `internal`.
+  `Tests: TestPayloadsAreFlat, TestNilCollectionNeverSerializesAsNull`.
 
 - **A1-4.9** No secret values (ADR-0019 §5, ADR-0020 §3–§4, A0-3.7). No event
   field — payload, `actor`, `evidence_refs`, or a value inside an array — MAY
@@ -513,21 +686,31 @@ kind (A1-3.5).
   captured material (A1-4.3) and opaque labels for it — the graph-side rule is
   identical and is A2-9; A1 and A2 MUST be read together, and A2-9.6 is the
   worker-side procedure (upload, reference, never inline).
-  - Ingest scanning: the platform MUST run the stdlib pattern scan A2-9.4
-    defines (PEM blocks, NTLM/base64 hash shapes, cloud key prefixes, `krbtgt`
-    material, high-entropy bearer strings) over every string field and every
-    array element of an append payload, and MUST reject a match with
-    `validation` naming the **field** and the **rule id** — never echoing the
-    value, a prefix of it, or its digest (A2-9.5). The rejection stays
-    observable as `action_blocked{reason:"append_rejected"}` (A1-7.5).
-    Reject-vs-redact is **PO confirm** (§6.4).
+  - Ingest scanning: the platform MUST run the `internal/secretscan` rules of
+    A2-9.4 over every string field and every array element of an append payload,
+    and MUST reject a match with `validation` naming the **field** and the
+    **rule id** — never echoing the value, a prefix of it, or its digest
+    (A2-9.5). The rejection stays observable as
+    `action_blocked{reason:"append_rejected"}` (A1-7.5). Reject-vs-redact is
+    **ruled**: reject, never redact (§6.4, BLOCK-PO6).
+
+    _BLOCK-A1-07 (⧉ identical decision content to A2 BLOCK-A2-07):_
+    The pattern set is A2-9.4's rule table and nothing else: rule ids live in exactly
+    one document, and an error MUST name the field and the rule id, never the value, a
+    prefix of it, or a digest of it (A0-3.4, A2-9.5). The scan is a **filter, not a
+    guarantee** — a hostile worker can encode, split or re-format a secret past any
+    pattern set. Egress exclusion (ADR-0020 §4) is the enforcement point and MUST be
+    applied independently at the gateway to every string that leaves the platform; for an
+    engagement whose policy is not `local_only` the gateway MUST exclude by **kind** (no
+    `credential` node, no node with `credential_kind` set, no `attrs` of such a node) and
+    `llm_call` MUST record the exclusion in `excluded_secret_count`.
   - `evidence_stored.sha256` is the **artifact-integrity** digest required by
     ADR-0009 §2 and is not "a captured hash" in A0-3.7's sense; a digest *of a
     credential value* MUST NOT be stored in any event field.
-  - Cloud egress: because secrets never enter an event, no event read, stage
-    view (A3), report or SSE frame can carry one to a model endpoint; the
-    gateway's own exclusion (ADR-0020 §4) remains in force as defence in depth
-    and is recorded as `llm_call.excluded_secret_count`.
+  - Cloud egress: the gateway's exclusion (ADR-0020 §4) is the enforcement
+    point and is recorded as `llm_call.excluded_secret_count`; the scan above is
+    a filter, not a guarantee (BLOCK-A1-07), so no read path, stage view (A3),
+    report or SSE frame may be relied on to be secret-free by construction.
   - Negative tests (shared suite, "secret-free serialization"):
     `TestEventSecretFreeSerialization` — for a corpus of appends with planted
     secrets (an NTLM-shaped hash, a PEM private key, a cloud access-key id, a
@@ -540,8 +723,11 @@ kind (A1-3.5).
     same corpus, no payload field carries artifact bytes (no base64 blob, no
     embedded file body) and every `evi_` reference resolves to an uploaded
     artifact (A1-4.3).
+    `Tests: TestEventSecretFreeSerialization, TestSecretScanNamesFieldNotValue,`
+    `TestNoSecretValueOrDigestInError`.
 
 - **A1-4.10** Unknown fields, both directions (A0-6.1/6.2/6.3, A0-6.6).
+  `Tests: TestServedEventIgnoresUnknownFields, TestAppendRejectsUnknownField`.
   - **Write** (`events:append` and every platform composition path): an
     unknown key in the request body or inside `payload` MUST be rejected with
     `validation` naming the offending field (`json.Decoder
@@ -577,28 +763,41 @@ kind (A1-3.5).
   `apr_` and `tool_` references. Cross-engagement references are not
   expressible in a stored event: the check runs before the row is written
   (A1-7.10).
+  A client MUST upload its artifacts (`evidence:upload`) **before** appending the
+  event that references them; an append whose `*_evidence_id` does not resolve in
+  this engagement is `notfound` (404) and MUST be retried by the buffering client
+  after the upload (ADR-0013). Write-time resolution is what makes A1-8.8's
+  dangling reference an archival state, never a normal one.
+  `Tests: TestEvidenceIDResolvesAtWriteTime, TestDanglingEvidenceIDIsNotFound`.
 
 - **A1-4.12** Enums, timestamps and integers inside a payload.
   - **Enums** spelled `enum{…}` in A1-3.3 are closed lists owned by A1
     (A0-8.5 spelling, byte-exact comparison, no synonyms). An unknown value on
     a write → `validation` (A0-6.3); on a read a client MUST preserve the raw
-    string and skip what it cannot handle. Three payload fields are **not** A1
-    enums: `node_kind`/`edge_kind` are A2's closed lists, stored here as capped
-    strings so an A2 addition needs no A1 change (A1-3.6); `error_kind` is
-    A0-3.1's closed list, stored as a string for the same reason; `risk_tier`
-    and `tool_version` are A7/registry vocabulary (A1-3.6).
-  - **Timestamps** (`expires_at`) follow A0-5.1 exactly (three fractional
-    digits, `Z`) and are platform-computed (A1-4.2): a caller MUST NOT supply
-    one, and no payload timestamp is ever a `*_claimed_at` field — the only
-    client-supplied time in an event is the envelope's `occurred_claimed_at`
-    (A1-1.4, A0-5.7).
+    string and skip what it cannot handle. Five payload fields across three
+    groups are **not** A1 enums: `node_kind`/`edge_kind` are A2's closed lists,
+    stored here as capped strings so an A2 addition needs no A1 change
+    (A1-3.6); `error_kind` is A0-3.1's closed list, stored as a string for the
+    same reason; `risk_tier` and `tool_version` are A7/registry vocabulary
+    (A1-3.6).
+  - **Timestamps**: a `timestamp` field is a Go **`string`** holding an A0-5.1
+    value, in the envelope and in every payload. `time.Time` MUST NOT appear in
+    any canonicalized type: its `MarshalJSON` drops trailing zero fractional
+    digits and silently changes digests. Payload timestamps (`expires_at`)
+    follow A0-5.1 exactly (three fractional digits, `Z`) and are
+    platform-computed (A1-4.2): a caller MUST NOT supply one, and no payload
+    timestamp is ever a `*_claimed_at` field — the only client-supplied time in
+    an event is the envelope's `occurred_claimed_at` (A1-1.4, A0-5.7).
+    `Tests: TestNoTimeTimeInCanonicalizedTypes, TestTimestampFieldsAreStrings`.
   - **Integers** are within A0-2.6's `[-(2^53-1), 2^53-1]`, with the suffix
     semantics of A0-8.2 (`*_ms`, `*_bytes`) and the sign rules of A1-4.2
     (`exit_code` may be `-1`; counts, sizes and durations may not be
-    negative). A float in a payload is `validation` (A1-4.8). Upstream-reported
-    counters (`llm_call.prompt_tokens`, `completion_tokens`) are integers of
-    untrusted *origin* but are not prose, so A1-4.4's marking does not apply to
-    them; a consumer MUST NOT treat them as billing truth.
+    negative). Transcription rule for `:int` — **`int64`** for every `*_ms`,
+    `*_bytes`, count and `seq` field; **`int`** only where A1-4.2 declares a
+    range (`exit_code`). A float in a payload is `validation` (A1-4.8).
+    Upstream-reported counters (`llm_call.prompt_tokens`, `completion_tokens`)
+    are integers of untrusted *origin* but are not prose, so A1-4.4's marking
+    does not apply to them; a consumer MUST NOT treat them as billing truth.
 
 ### A1-5 · Hash chain
 

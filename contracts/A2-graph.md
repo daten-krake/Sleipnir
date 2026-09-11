@@ -9,7 +9,7 @@
 | **Owner** | architect |
 | **Gates** | A3 (stage views) · A4 (`/api/v1` graph endpoints) · A5 (token scopes: graph writes are excluded for machine principals) · `internal/graph`, `internal/policy`, the ingest path, the report builder |
 | **Implements** | ADR-0016 §1–§5 · ADR-0005 §2/§3/§5 · ADR-0009 §1–§2 · ADR-0019 §2/§5 · ADR-0020 §3–§4 · SPEC §6, §8, C8 · Q1, Q2, Q3, Q4, Q5, Q6 (+ Q6 worker addendum) · adversarial A1, A12 |
-| **Depends on** | A0 (frozen for this document: ids A0-1.2, canonical JSON A0-2, error kinds A0-3, paging A0-4, time A0-5, unknown fields A0-6, size caps A0-7, field conventions A0-8) · A1 (event envelope fields consumed by provenance, A2-5.4) |
+| **Depends on** | A0 (**Draft** at the time of writing; every work package below is gated on the A0/A1/A2 Freeze PR) — ids A0-1.2, canonical JSON A0-2, error kinds A0-3, paging A0-4, time A0-5, unknown fields A0-6, size caps A0-7, field conventions A0-8 · A1 (event envelope fields consumed by provenance, A2-5.4) |
 | **Authority** | ADR > SPEC > DESIGN > contract. A clause here that contradicts an Accepted ADR is a defect in this document. A0 owns every cross-cutting convention; A2 cites A0 clause ids instead of restating them, and requests amendments only in §6. |
 
 ## 2. Scope
@@ -40,17 +40,27 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   external graph database, no query language, no traversal API (Q1).
 - **A2-1.2** Node ids use prefix `gn_`, edge ids `ge_`, evidence ids `evi_`
   (A0-1.2). Ids are platform-generated (A0-1.4); a client MUST NOT supply,
-  construct or reuse an id from another engagement (A0-1.6, A2-11).
+  construct or reuse an id from another engagement (A0-1.6, A2-11). The
+  served field names are `graph_node_id` (nodes) and `graph_edge_id` (edges),
+  never a bare `id` (A2-1.6).
 - **A2-1.3** Node and edge **content is immutable** (ADR-0016 §4, Q2). The only
   mutable fields in A2 are `quarantined`, `quarantine_reason`,
   `report_excluded` (A2-8) and `retracted` on an edge (A2-3.9). An attempt to
   change any other field of an existing node or edge MUST return `conflict`
   (A0-3.1: immutable field) and MUST NOT partially apply.
-- **A2-1.4** Every node and edge carries `seq`: a per-engagement,
-  platform-assigned, strictly increasing integer, immutable and unique. `seq`
-  is the ordering key for every paginated graph collection (A0-4.3) and the
-  `k` of a cursor (A0-4.4). Clients MUST NOT derive order from id text
-  (A0-1.6).
+- **A2-1.4** Every node and edge carries `graph_seq`: a per-engagement,
+  platform-assigned, strictly increasing integer, immutable and unique.
+  `graph_seq` is the ordering key for every paginated graph collection
+  (A0-4.3) and the `k` of a cursor (A0-4.4). Clients MUST NOT derive order
+  from id text (A0-1.6).
+- **A2-1.4a** `seq` is assigned by the platform inside the transaction that
+  inserts the row, from **one per-engagement graph sequence shared by nodes
+  and edges**, strictly increasing by 1, dense, and independent of the A1
+  event `seq` (A1-5.4). To keep the two apart in code, logs and views the
+  graph field is named **`graph_seq`** in Go fields, store columns **and
+  JSON**; A2-8.9's ordering tuple is `(graph_seq, graph_node_id)`/
+  `(graph_seq, graph_edge_id)` and A0-4.4's cursor `k` is that value.
+  `content_hash` is unaffected: A2-4.6's 20 keys contain no `seq`.
 - **A2-1.5** Every node and edge carries `engagement_id`, stamped by the
   platform from the authenticated request binding (Q6, third enforcement
   layer). It MUST NOT be accepted from a request body: the write types have no
@@ -62,11 +72,29 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   `supersedes_id`, `superseded_by_id`; the agent node is `agent_node_id`; and
   error/log attributes use `graph_node_id` for a graph node (A0-3.6). §6.3 asks
   A0 to bless the payload spellings.
+
+  One value, one name platform-wide (A0-3.6): a graph node is `graph_node_id` and a
+  graph edge is `graph_edge_id` in every JSON document, payload, error body and log
+  attribute; `node_id` remains the remote agent node (`slp_node_`, Q9). A2's served
+  field `id` is renamed accordingly (pre-Freeze, additive-only afterwards).
+
+  | A1 event payload field | A2 graph field (Go / JSON) |
+  |---|---|
+  | `graph_node_written.graph_node_id` | `Node.ID` / `graph_node_id` |
+  | `graph_edge_written.graph_edge_id` | `Edge.ID` / `graph_edge_id` |
+  | `from_graph_node_id` | `Edge.SourceID` / `source_id` |
+  | `to_graph_node_id` | `Edge.TargetID` / `target_id` |
+  | `supersedes_graph_node_id` | `Node.SupersedesID` / `supersedes_id` |
+
+  This table is the A1↔A2 field mapping (PAIR-M1): A1-3.6 cites it and A1-2.1
+  carries the identity half (BLOCK-A2-10). `content_hash` is unaffected — no
+  `id` key appears in A2-4.6.
 - **A2-1.7** Value types are closed: UTF-8 strings (A0-2.3, capped per A2-7),
   integers within A0-2.6, booleans (A0-8.8), closed enum strings (A0-8.5),
   ids (A0-1), timestamps (A0-5.1) and bounded lists of those. Floats, `null`
-  (A0-8.3) and nested objects MUST NOT appear anywhere in a node or edge
-  except the flat `attrs` map (A2-6).
+  (A0-8.3) and nested objects MUST NOT appear in any node or edge field.
+  `attrs` (A2-6) is the only nested structure and is itself restricted to flat
+  scalar values: no float, no `null`, no array, no deeper object.
 - **A2-1.8** A node is *current* iff `superseded_by_id` is absent (A2-4.4).
   "current" is a defined term, not a stored field — one source of truth.
 - **A2-1.9** Declared limitation: A2 has no merge operation. Two nodes that
@@ -107,8 +135,8 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   | `quarantined`, `quarantine_reason`, `report_excluded` | bool / enum / bool | platform-set | A2-8; `quarantined` and `report_excluded` always present (`false` is a value, A0-8.3/8.8) |
   | `supersedes_id`, `superseded_by_id` | string (`gn_`) | no | A2-4 |
   | `content_hash` | 64-char lowercase hex | platform-set | A2-4.6, A0-2.15/8.7 |
-  | `provenance` | object | platform-set, mandatory | A2-5 |
-  | `id`, `engagement_id`, `seq`, `kind` | per A2-1 | platform-set | A2-1.2/1.4/1.5 |
+  | `provenance` | bounded list, ≤ 8 entries | platform-set, mandatory | A2-5, A2-4.7 |
+  | `graph_node_id`/`graph_edge_id`, `engagement_id`, `graph_seq`, `kind` | per A2-1 | platform-set | A2-1.2/1.4/1.4a/1.5/1.6 |
 
 - **A2-2.3** Kind-specific fields. A field that does not apply to the declared
   kind MUST NOT be present; a write that sets one is rejected → `validation`
@@ -124,14 +152,17 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   | `group` | `label` | `sid` ≤ 64, `domain` ≤ 253 |
   | `credential` | `label`, `credential_kind`, `evidence_id` (`evi_`) | `domain` ≤ 253 |
   | `share` | `label` | `domain` ≤ 253 |
-  | `evidence_ref` | `label`, `evidence_id` (`evi_`), `media_kind` | `size_bytes` int ≥ 0 (A0-8.2) |
+  | `evidence_ref` | `label`, `evidence_id` (`evi_`), `media_kind` | `size_bytes` int ≥ 1 (A0-8.2) |
   | `finding` | `label`, `summary`, `severity`, `status` | `evidence_ids`, `attrs` |
   | `hypothesis` | `label`, `claim`, `basis`, `status` | `evidence_ids`, `attrs` |
 
   `cidr` MUST parse with `net.ParseCIDR` (stdlib) — an unparseable value is
-  `validation`, never a stored string (A2-10.4). Prefer the common
-  `evidence_ids` field; create an `evidence_ref` node only when the artifact
-  itself needs edges or independent provenance (DESIGN §2 simplicity).
+  `validation`, never a stored string (A2-10.4). `size_bytes` MUST be ≥ 1 — a
+  zero-byte artifact is not an artifact — so absence and zero cannot be
+  confused in the served representation (A0-8.3/8.4); `contentDoc` still
+  carries `0` for kinds where the field does not apply (A2-4.6). Prefer the
+  common `evidence_ids` field; create an `evidence_ref` node only when the
+  artifact itself needs edges or independent provenance (DESIGN §2 simplicity).
 - **A2-2.4** `credential_kind` (closed, A0-8.5): `password`, `hash`, `ticket`,
   `key`, `token`, `certificate`, `other`. It names the *class* of the captured
   material, never the material (A2-9). `media_kind` (closed): `file`,
@@ -147,19 +178,23 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   by the `supersedes` edge and `superseded_by_id` (A2-4), and a second encoding
   would be a second source of truth. **PO confirm** (§6.7).
 - **A2-2.7** `confidence` is **not** a finding field: it is the provenance
-  confidence of A2-5.6 and appears exactly once per node and edge. Q2's
-  "Finding carries confidence" is discharged by the mandatory provenance block
-  — a second confidence field would let a worker assert confidence in its own
-  claim without an evidence grade. **PO confirm** (§6.1).
+  confidence of A2-5.6 and appears exactly once per provenance entry on every
+  node and edge. Q2's "Finding carries confidence" is discharged by the
+  mandatory provenance block — a second confidence field would let a worker
+  assert confidence in its own claim without an evidence grade. This is a
+  **change to a locked PO decision (Q2) and requires the product owner's
+  signature, not confirmation** (§6.1, §6 item 13). With A2-4.7's provenance
+  set, `verified` is reachable: it requires a second, independent observation
+  (A2-5.6).
 - **A2-2.8** Who may set what:
 
   | Field class | Set by | Changed by |
   |---|---|---|
   | `label`, `summary`, kind fields, `attrs`, `evidence_ids` | platform ingest, from an A1 event (Q6) | never — revision only (A2-4) |
-  | `severity`, `status`, `claim`, `basis` | platform ingest; the *value* originates in a worker task result or an orchestrator report, the *write* is platform-side (Q6) | never — revision only; an operator correction is a new node with `principal_kind: operator` |
-  | `quarantined`, `quarantine_reason` | platform policy engine (A2-8.2) | only as a consequence of an operator scope/blacklist change (Q6), event-logged |
-  | `report_excluded` | operator only (A2-8.7) | operator only, event-logged |
-  | `provenance`, `seq`, `content_hash`, ids | platform only | never |
+  | `severity`, `status`, `claim`, `basis` | platform ingest; the *value* originates in a worker task result or an orchestrator report, the *write* is platform-side (Q6) | never — revision only; an operator correction is a new node with `principal_kind: user` |
+  | `quarantined`, `quarantine_reason` | platform policy engine (A2-8.2) | **tightening only** by an admin or the assigned operator (A2-8.1); a release happens solely as the recomputation an operator scope change causes (A2-8.5) — there is no release operation |
+  | `report_excluded` | operator only, and only on a node with `quarantined:true` (A2-8.7) | operator only, event-logged |
+  | `provenance`, `graph_seq`, `content_hash`, ids | platform only | never (a dedup collapse appends a provenance entry, A2-4.7) |
 
   A machine principal MUST NOT hold a graph-write scope at all (Q6 worker
   addendum, A5); "set by platform ingest" is the only agent-derived path.
@@ -188,7 +223,10 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   both ends (A2-4.3).
 - **A2-3.4** Duplicate policy — **collapse, do not error**: a write whose
   `(engagement_id, kind, source_id, target_id)` already exists MUST return the
-  existing `ge_` id, store nothing new, and report success. _A re-observation
+  existing `ge_` id, store nothing new, and report success. The collapse still
+  emits the A1 `graph_edge_written` event with `dedup_hit:true` (A1-3.3), so
+  the chain distinguishes "new evidence recorded" from "duplicate absorbed".
+  _A re-observation
   carries no new graph information; the observation itself is already in the
   append-only event log (A1, ADR-0009 §1). This also makes a retried edge
   write idempotent, which A0-3.11 requires before a retry is safe._
@@ -199,8 +237,13 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   as `internal`, never a silent retry loop).
 - **A2-3.6** `contradicts` is symmetric in meaning but stored once: if the
   inverse pair already exists, the write MUST collapse to the existing edge and
-  MUST NOT create the inverse. Which of the two directions is stored is
-  decided by the platform at first write and is immutable afterwards.
+  MUST NOT create the inverse. For `contradicts` the platform normalizes the
+  stored direction to `source_id < target_id` byte-wise (A0-1.9) at
+  composition, which makes A2-3.5's uniqueness constraint on
+  `(engagement_id, kind, source_id, target_id)` sufficient and makes a replayed
+  write converge; endpoint roles carry no meaning for this kind. The
+  normalized direction is immutable afterwards.
+  `Tests: TestContradictsDirectionNormalized`.
 - **A2-3.7** An edge MUST NOT have `source_id == target_id` → `validation`.
   `contradicts` between a node and its own revision is meaningless: use
   `supersedes`.
@@ -240,11 +283,16 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   by A2-4.5.
 - **A2-4.5** List reads MUST return current nodes only unless the caller
   explicitly asks for history (A4 defines the parameter); a history read
-  returns the whole chain ordered by `seq` (A2-1.4) and paginates per A0-4. A
+  returns the whole chain ordered by `graph_seq` (A2-1.4) and paginates per
+  A0-4. A
   single chain walk is bounded by `MaxSupersedeChain` (64) revisions; past
   that the read paginates rather than growing (adversarial A14: an agent could
   otherwise build a chain whose walk is unbounded). A superseded node MUST NOT
   be silently dropped from a read that asked for history — it is evidence.
+  A `supersedes` write whose target chain already holds `MaxSupersedeChain`
+  (64) revisions is `conflict` (A0-3.1) naming the bound and the chain's first
+  `gn_`; the bound is enforced at **write** time, and A2-4.5's read bound is
+  the consequence. `Tests: TestSupersedeChainBoundAtWrite`.
 - **A2-4.6** `content_hash` is SHA-256 (A0-2.15) over the **canonical JSON**
   (A0-2) of a purpose-built content document with a **fixed key set**
   (A0-2.14): `addresses`, `attrs`, `basis`, `cidr`, `claim`,
@@ -252,17 +300,58 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   `media_kind`, `port`, `protocol`, `severity`, `sid`, `size_bytes`, `status`,
   `summary`, `transport` — every field on every instance, zero-valued when not
   applicable to the kind (A0-2.14), keys in UTF-8 byte order (A0-2.4),
-  integers only (A0-2.6). Its A0-2.12 **exclusion list is empty**: ids, `seq`,
+  integers only (A0-2.6). Its A0-2.12 **exclusion list is empty**: ids,
+  `graph_seq`,
   provenance, quarantine flags, `report_excluded`, `superseded_by_id` and
   `content_hash` are not part of the document at all, so none of them can
-  influence the digest. _Consequence of A0-2.14: these content fields are the
+  influence the digest. `addresses` and `evidence_ids` MUST be sorted ascending
+  by unsigned byte value and deduplicated **before** the content document is
+  canonicalized (A1-4.7's rule), so two observations of the same content in a
+  different input order produce the same `content_hash`. `attrs` keys are
+  ordered by A0-2.4. `Tests: TestContentHashStableAcrossArrayOrder` (§4.2 row
+  F1-R is the vector that proves it).
+
+  The fingerprint MUST be computed from `contentDoc` **only**; `Node` MUST NOT
+  be passed to `cjson` for fingerprinting (`Node` carries `omitempty` tags and
+  A0-8.3 absence semantics, `contentDoc` carries the fixed 20-key set).
+  `contentDoc.Attrs`, `.EvidenceIDs` and `.Addresses` MUST be non-nil before
+  marshaling (A0-2.14): a canonical content document containing `null` is a
+  platform defect → `internal`. `Tests: TestContentDocFixedKeySet` (reflection:
+  the canonical bytes of a zero-valued `contentDoc` contain exactly the 20 keys
+  of A2-4.6 in byte order), `TestContentHashVector`.
+  _Consequence of A0-2.14: these content fields are the
   one place in A2 where "unset" serializes as a zero value rather than as
   absence (A0-8.3); the API representation of a node keeps A0-8.3 absence
   semantics and the digest is computed from the dedicated document type._
 - **A2-4.7** Node dedup: a write whose `(engagement_id, kind, content_hash)`
-  already exists MUST return the existing `gn_` id and store nothing (A2-3.4
-  rationale). Replayed ingest of the same A1 event is therefore idempotent
-  (A0-3.11, ADR-0013 offline buffering).
+  already exists MUST return the existing `gn_` id and store no new row
+  (A2-3.4 rationale). Replayed ingest of the same A1 event is therefore
+  idempotent (A0-3.11, ADR-0013 offline buffering). Content dedup is the
+  **only** protection against a rewound ingest watermark (A1-7.7 item 4);
+  `content_hash` MUST therefore be stable across platform releases (A2-4.8,
+  A0-2.16).
+
+  `provenance` is a bounded list of at most 8 entries, each carrying its own
+  `event_id`, `principal_kind`, `run_id`, `job_id`, `task_id`, `agent_node_id`,
+  `tool_id`, `tool_version`, `recorded_at`, `observed_claimed_at` and `confidence`.
+  The list is ordered by the `seq` of `provenance[].event_id`, never by arrival, so a
+  node's bytes are deterministic. A dedup collapse (A2-4.7) appends the new
+  observation's entry instead of discarding it — except that an entry whose `event_id`
+  is already present is **not** appended, which is what keeps a replayed A1 event
+  idempotent (ADR-0013 offline buffering). The node's `confidence` is the highest
+  grade in the list and MUST be raised to `verified` only when the new entry's
+  `event_id` differs from every existing one **and** its `task_id`/`agent_node_id`
+  differ: a second, independent observation (A2-5.6). That is the only path by which
+  `verified` is stored. Every collapse emits the A1 `graph_node_written` event with
+  `dedup_hit:true`.
+  Tests: TestNodeDedupKeepsEveryObservation, TestVerifiedRequiresIndependentObservation,
+  TestReplayedEventAddsNoProvenanceEntry, TestProvenanceListIsOrderedByEventSeq.
+
+  A list that already holds 8 entries is closed: a further distinct observation
+  is recorded by the A1 `graph_node_written` event and MUST NOT extend the
+  list; the collapse still returns the existing `gn_` id. `content_hash` is
+  computed over content only (A2-4.6), so the collapse key
+  `(engagement_id, kind, content_hash)` is unchanged by any provenance growth.
 - **A2-4.8** A0-2.16 applies: the exact canonical bytes `content_hash` was
   computed over MUST be persisted with the node, and any verification MUST
   recompute from those stored bytes — never from a re-serialization of decoded
@@ -275,51 +364,83 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
 
 ### A2-5 · Provenance (mandatory)
 
-- **A2-5.1** Every node and every edge MUST carry a `provenance` object
-  (ADR-0016 §1: "graph content is evidence, not opinion"). A record without
-  provenance MUST NOT be stored.
+- **A2-5.1** Every node and every edge MUST carry `provenance` — a bounded
+  list of at most 8 entries, ordered by the `seq` of `provenance[].event_id`
+  (ADR-0016 §1: "graph content is evidence, not opinion"; A2-4.7). A record
+  without provenance MUST NOT be stored.
 - **A2-5.2** Provenance is **platform-stamped at ingest** and MUST NOT be
   client-supplied (Q6 worker addendum). The write request types contain no
   provenance field, so a body that carries one is rejected as an unknown field
   → `validation` (A0-6.2). _A worker that could stamp its own provenance could
   attribute a fabricated finding to a tool run that never happened._
-- **A2-5.3** Fields. Absent optional fields are omitted, never `null`
+- **A2-5.3** Fields of **one** provenance entry (A2-4.7). Absent optional
+  fields are omitted, never `null`
   (A0-8.3); every id is validated per A0-1.5.
 
   | Field | Type | Req | Meaning |
   |---|---|---|---|
-  | `principal_kind` | enum | yes | `platform`, `orchestrator`, `worker`, `operator` (A0-8.5) |
+  | `principal_kind` | enum | yes | `platform`, `orchestrator`, `worker`, `node`, `user` — A1-2.1's list verbatim (A0-8.5) |
   | `run_id` | `run_` | yes | the run whose work produced this record |
   | `job_id` | `job_` | when `principal_kind` ∈ {`orchestrator`, `worker`} | orchestrator container |
   | `task_id` | `task_` | when `principal_kind` = `worker` | worker container |
   | `agent_node_id` | `slp_node_` | when observed via a remote agent (Q9) | the remote agent node — **not** `node_id` (A2-1.6, A0-3.6) |
-  | `operator_id` | id of a prefix registered in A0-1.2 | when `principal_kind` = `operator` | human actor; **blocked** until A0/A5 register the prefix (§6.2) |
+  | `user_id` | `usr_` (A0-1.2, AM-1) | when `principal_kind` = `user` | human actor (§6.2) |
   | `tool_id` | `tool_` | when a registry tool produced the observation | ADR-0008, Q14, A0-1.3 |
-  | `tool_version` | string ≤ 32 | with `tool_id` | the registry version string; MUST NOT be folded into `tool_id` (A0-1.3) |
+  | `tool_version` | string ≤ `ToolVersionMaxBytes` (64, A0-7.1) | with `tool_id` | the registry version string; MUST NOT be folded into `tool_id` (A0-1.3) |
   | `event_id` | `evt_` | yes | the originating A1 event (A2-5.4) |
-  | `recorded_at` | timestamp | yes | platform ingest time, A0-5.1/5.4 — the node's only creation timestamp |
+  | `recorded_at` | timestamp | yes | platform ingest time, A0-5.1/5.4 — the entry's creation timestamp |
   | `observed_claimed_at` | timestamp | no | untrusted client-supplied observation time carried by the A1 event; suffix per A0-5.7/A0-8.2 |
   | `confidence` | enum | yes | A2-5.6 |
 
+  **`node` is required** — a Q9/ADR-0013 remote-agent observation must be
+  attributable; without it such an observation has no principal.
+
+  | A1 `actor.type` | A2 `principal_kind` | id shape (A0-1.2) |
+  |---|---|---|
+  | `platform` | `platform` | `""` |
+  | `orchestrator` | `orchestrator` | `job_` |
+  | `worker` | `worker` | `task_` |
+  | `node` | `node` | `slp_node_` |
+  | `user` | `user` | `usr_` (AM-1) |
+  One vocabulary, two documents: A2-5.3 adopts A1-2.1's list verbatim; `operator` is
+  renamed `user` and `operator_id` is renamed `user_id` platform-wide. The prose word
+  "operator" (a human role, SPEC §3) is unaffected — only the enum value changes.
+
+  `principal_kind` is the principal whose **work produced the content**;
+  `provenance.event_id`'s event `actor` is the platform subsystem that wrote
+  the row (A1-3.3, always `(platform, "graph")`). The two are expected to
+  differ, and copying one into the other is a defect.
+  `Tests: TestPrincipalKindIsNotCopiedFromActor, TestFieldNameMappingIsTotal`.
+
+  **AM-1 — resolved by default for the Freeze (PO confirm):** A0-1.2 registers the human-principal prefix `usr_` (`^usr_B{26}$`, 30 B) and A0 §4 adds `KindUser`. A0 owns id *shapes*; delegating the spelling to A5 would split A0-1.5 validation across two contracts. Every user-composed A1 kind (`actor.principal_id`, A1-2.2) and every A2 operator write (`user_id`, A2-5.3) validates against it. The product owner MUST confirm the prefix spelling before Frozen; it is additive-only afterwards (A0-1.10).
 - **A2-5.4** Tie into A1: `event_id` MUST reference an event that exists **in
   this engagement** (A2-11). A2 consumes the A1 envelope fields `event_id`,
-  `kind`, `recorded_at`, `seq`, `engagement_id`, `run_id`, `job_id` (envelope
-  shape per A0-2.17 vector V5 and A0-3.6; A1 was not on disk when A2 was
-  drafted — §6.9). Every graph record is thereby anchored to a hash-chained,
+  `kind`, `recorded_at`, `seq` (the A1 **event** seq, not A2-1.4a's
+  `graph_seq`), `engagement_id`, `run_id`, `job_id` (envelope shape per
+  **A1-1.1**; A0-2.17 V5 is a canonicalization vector with a synthetic key set,
+  not a valid event — see A0-2.17's annotation; A0-3.6 for the field
+  spellings). Every graph record is thereby anchored to a hash-chained,
   append-only audit row (Q11, ADR-0009 §1): deleting or editing graph content
   cannot remove the evidence of its creation.
 - **A2-5.5** `observed_claimed_at` MUST NOT drive ordering, supersession,
-  quarantine, expiry or any digest (A0-5.7); ordering uses `seq` (A2-1.4) and
-  `recorded_at`. It is stored next to `recorded_at` so divergence is visible in
-  the audit trail.
+  quarantine, expiry or any digest (A0-5.7); ordering uses `graph_seq`
+  (A2-1.4) and `recorded_at`. It is stored next to `recorded_at` so divergence
+  is visible in the audit trail.
 - **A2-5.6** `confidence` (closed, A0-8.5) grades the **evidence**, not the
   author's optimism: `observed` (directly present in captured tool output
   referenced by `event_id`/`evidence_ids`) · `inferred` (derived by reasoning
   from other graph content) · `verified` (reproduced by a second, independent
-  observation). `confidence` is set by the platform at ingest from the ingest
-  rule, MUST NOT be raised by a later write, and can only change through a
-  revision (A2-4). **PO confirm** (§6.1: alternative scale `low`/`medium`/
-  `high`).
+  observation). Every provenance entry carries its own grade (A2-5.3); the
+  node's or edge's `confidence` is the **highest** grade in the list. An
+  entry's grade is set by the platform at ingest from the ingest rule and MUST
+  NOT be raised by a later write; content change is a revision (A2-4).
+  `verified` is stored **only** through A2-4.7's independence rule — a second
+  entry whose `event_id` differs from every existing one **and** whose
+  `task_id`/`agent_node_id` differ — so no single observation can assert it.
+  `Tests: TestVerifiedRequiresIndependentObservation,
+  TestSelfObservedNodeStaysInferred`. **PO signature required** (§6.1, §6 item
+  13: the grade scale deviates from Q2's literal wording; alternative scale
+  `low`/`medium`/`high`).
 - **A2-5.7** A write whose provenance cannot be established MUST NOT be
   stored, MUST NOT be stored with placeholder or synthesized values, and
   returns: `internal` (500) when the platform ingest path failed to produce an
@@ -339,24 +460,60 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
 - **A2-6.1** `attrs` exists so a kind schema does not have to change for every
   new observation (Q3). It is **flat**: `map[string]AttrValue` with a depth of
   exactly one. Nested objects, arrays, `null` and floats MUST be rejected →
-  `validation` (A2-1.7, A0-2.6).
+  `validation` (A2-1.7, A0-2.6). The wire and canonical form of `attrs` is
+  `{"<key>": <JSON string | integer | boolean>}` — depth exactly one, no
+  wrapper object. `AttrValue` MUST carry `json:"-"` on its Go fields and a
+  hand-written `MarshalJSON`/`UnmarshalJSON` emitting the bare scalar of the
+  live field; the `Type` discriminator exists only in Go and is never
+  serialized. `UnmarshalJSON` accepts a JSON string, integer or boolean only
+  and rejects `null`, floats, arrays and objects with `validation` (A2-6.1).
+  Round-trip MUST preserve `Type`.
+  `Tests: TestAttrValueRoundTrip, TestAttrsRejectNestedFloatNull`.
 - **A2-6.2** Keys MUST match A0-8.1 (`^[a-z][a-z0-9_]{0,39}$`), which is also
-  the key length cap: ≤ 40 chars, no new A2 constant. Values are `string`
+  the key length cap: ≤ 40 chars (`AttrKeyMaxBytes`, A0-7.1 registry — the same
+  bound A0-8.1's regex expresses). Values are `string`
   ≤ 512 B, `int64` within A0-2.6, or `bool`.
-- **A2-6.3** A key MUST NOT equal or shadow a schema field name of the node's
-  kind or of A2-2.2 (`label`, `summary`, `kind`, `port`, `severity`,
-  `evidence_ids`, …) → `validation`. _Two places to look for one fact is how a
-  report ends up contradicting the graph._
+- **A2-6.3** A key MUST NOT equal a reserved field name → `validation`. The
+  reserved set is a normative, closed, additive-only (A0-6.5) constant:
+
+  ```go
+  // ReservedAttrKeys (A2-6.3): closed list. Membership is byte-exact — no
+  // prefix, suffix or substring matching. `seq` stays reserved even though the
+  // graph field is `graph_seq` (A2-1.4a); `operator_id` is gone with the
+  // A2-5.3 rename to `user_id`.
+  var ReservedAttrKeys = map[string]bool{ /* 50 keys */ }
+  ```
+
+  `ReservedAttrKeys = {id, engagement_id, seq, graph_seq, kind, label, summary,
+  attrs, evidence_id, evidence_ids, addresses, cidr, port, transport,
+  protocol, sid, domain, credential_kind, media_kind, size_bytes, severity,
+  claim, basis, status, content_hash, quarantined, quarantine_reason,
+  report_excluded, supersedes_id, superseded_by_id, provenance, source_id,
+  target_id, source_kind, target_kind, retracted, principal_kind, run_id,
+  job_id, task_id, agent_node_id, user_id, tool_id, tool_version, event_id,
+  recorded_at, observed_claimed_at, confidence, graph_node_id,
+  graph_edge_id}` (50 keys). Membership MUST be tested **byte-exactly** — a
+  prefix or substring match MUST NOT be used. _Two places to look for one fact
+  is how a report ends up contradicting the graph._
+  `Tests: TestReservedAttrKeysRejected`.
 - **A2-6.4** Caps (mechanism R, A2-7): ≤ 16 keys (`AttrsMaxKeys`), ≤ 512 B per
   string value (`AttrValueMaxBytes`), ≤ 4096 B for the serialized `attrs`
   object (`AttrsTotalMaxBytes`). Exceeding any of them → `summary_too_large`
   (A0-7.6, 413) naming the key, the cap and the actual byte count.
+  Document-class caps in A2 are measured on the **A0-2 canonical form** of the
+  field's own object — the same bytes that enter `content_hash` (A2-4.6) —
+  computed once at ingest and stored alongside it; the API representation is
+  never a measurement input, so the cap check and the fingerprint can never
+  disagree.
 - **A2-6.5** `attrs` is part of `content_hash` (A2-4.6), so an attrs-only
   change is a revision (A2-4), not an update.
 - **A2-6.6** Promotion review: an `attrs` key that recurs is a candidate for
-  the kind schema. The platform MUST expose, per engagement and per node kind,
-  the distinct `attrs` keys with their occurrence counts, ordered by key
-  byte-wise (A0-1.9). A key observed on **≥ 3** nodes of one kind in one
+  the kind schema. The distinct `attrs` keys and their per-kind occurrence
+  counts MUST be **derivable from stored rows** (`attrs` stored per key, never
+  as an opaque blob), ordered by key byte-wise (A0-1.9). The operator-facing
+  surface is the UI's (ADR-0011), not a `/api/v1` query endpoint (Q1); A4
+  decides whether it exists in v1. A key observed on **≥ 3** nodes of one kind
+  in one
   engagement SHOULD be proposed as a schema field; promotion is an additive
   contract amendment (A0-6.5) and a new ADR only if it changes a cap or an
   enum. _The escape hatch must not become the schema (Q3)._
@@ -374,26 +531,34 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   shortened evidence misleads the approver and corrupts the report (ADR-0016
   §1, ADR-0018 §1). Mechanism T belongs to A3's platform-computed view fields.
 
-  | Field class | Cap | Constant | Source | Mech |
+  | Field class | Cap | Constant (A0-7.1 registry unless marked) | Source | Mech |
   |---|---|---|---|---|
   | `summary` (all kinds except `finding`) | 512 B | `NodeSummaryMaxBytes` | Q4 / A0-7.1 | **R** |
   | `summary` (`finding`) | 2048 B | `FindingSummaryMaxBytes` | Q4 / A0-7.1 | **R** |
   | `label` | 128 B | `NodeLabelMaxBytes` (A2-local) | A2 | **R** |
   | `claim` (`hypothesis`) | 512 B | `HypothesisClaimMaxBytes` (A2-local) | A2 | **R** |
   | `basis` (`hypothesis`) | 1024 B | `HypothesisBasisMaxBytes` (A2-local) | A2 | **R** |
-  | `attrs` string value | 512 B | `AttrValueMaxBytes` (A2-local) | A2 | **R** |
-  | `attrs` serialized object | 4096 B | `AttrsTotalMaxBytes` (A2-local) | A2 | **R** |
-  | `attrs` key count | 16 | `AttrsMaxKeys` (A2-local) | A2 | **R** |
-  | `evidence_ids` count | 8 | `EvidenceIDsMax` (A2-local) | A2 | **R** |
-  | `addresses` count / entry | 16 / 64 B | `AddressesMax`, `AddressMaxBytes` (A2-local) | A2 | **R** |
+  | `attrs` string value | 512 B | `AttrValueMaxBytes` | A2 / A0-7.1 | **R** |
+  | `attrs` key length | 40 chars | `AttrKeyMaxBytes` | A0-8.1 / A0-7.1 | **R** |
+  | `attrs` serialized object | 4096 B | `AttrsTotalMaxBytes` | A2 / A0-7.1 | **R** |
+  | `attrs` key count | 16 | `AttrsMaxKeys` | A2 / A0-7.1 | **R** |
+  | `evidence_ids` count | 8 | `EvidenceRefsMax` (was `EvidenceIDsMax`) | A1-4.7 / A0-7.1 | **R** |
+  | `addresses` count / entry | 16 / 64 B | `AddressesMax`, `AddressMaxBytes` (the latter A2-local) | A2 / A0-7.1 | **R** |
+  | `tool_version` (provenance) | 64 B | `ToolVersionMaxBytes` — **A2's former 32 was a defect; the registry value 64 governs** | A0-7.1 | **R** |
+  | `provenance` entries | 8 | `ProvenanceMaxEntries` (A2-local, A2-4.7) | A2 | **R** |
+  | supersede chain length | 64 | `MaxSupersedeChain` | A2 / A0-7.1 | **R** |
   | `protocol`, `sid`, `domain`, `credential_kind`-adjacent strings | 32 / 64 / 253 B | A2-local per A2-2.3 | A2 | **R** |
-  | stage view document, node count, stage summary | 64 KiB / 500 / 2 KiB | `StageView*`, `StageSummaryMaxBytes` | Q4 / A0-7.1 | **A3** (T expected) |
+  | stage view document, node count, stage summary | 64 KiB / 500 / 2 KiB | `StageView*`, `StageSummaryMaxBytes` | Q4 / A0-7.1 | not assigned here — A3 per A0-7.7 |
 
+  Every constant named without "(A2-local)" is a row of the A0-7.1 registry
+  (AM-2 granted): **A2 declares no value of its own for it and cites the A0
+  name** (PAIR-N1); the numbers in the Cap column are restated for readability
+  only, and A0-7.1 is the source of truth. `EvidenceIDsMax` is gone — both
+  documents cite `EvidenceRefsMax`. A2-local constants are new field classes
+  under A0-7.7's delegation, not changes to the Q4 constants (A0-7.2).
   Measurement per A0-7.3 (decoded UTF-8 bytes of the value; serialized bytes
-  for a document), truncation never applied by A2 (A0-7.4 is A3's concern).
-  A2-local constants are new field classes under A0-7.7's delegation, not
-  changes to the Q4 constants (A0-7.2); §6.4 asks A0 to adopt them into the
-  A0-7.1 table so all caps live in one const block. **PO confirm**.
+  for a document), truncation never applied by A2 (A0-7.4 is A3's concern),
+  and document-class caps measured on the A0-2 canonical form (A2-6.4).
 - **A2-7.2** Enforcement is platform-side at ingest (A0-7.8, Q3, ADR-0005 §5).
   A client-side pre-check MAY exist and is not enforcement. Caps MUST be
   checked before the record is stored, in one pass, in the order of A2-10.2.
@@ -407,13 +572,67 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   adjective — no `is_` prefix, A0-8.8) and `quarantine_reason` (closed enum:
   `out_of_scope`, `blacklisted`; absent when `quarantined` is `false`,
   A0-8.3). Both are serialized on every node read.
+
+  Quarantine vocabulary: A2 owns the **state** vocabulary (`quarantine_reason`:
+  `out_of_scope`, `blacklisted`); A1 owns the **occurrence** vocabulary
+  (`quarantine_kind`: `out_of_scope_discovery`, `blacklist_match`,
+  `operator_quarantine`). Mapping — `out_of_scope_discovery → out_of_scope` ·
+  `blacklist_match → blacklisted` · `operator_quarantine → (the reason already in
+  force)`. There is no `operator_release` value: a release is
+  `quarantine_recomputed{scope_changed}` plus the per-node recomputation, stored as
+  `quarantined:false` with `quarantine_reason` absent. The stored reason MUST be
+  derived by the platform from this mapping, never copied from an event string.
+
+  An admin or the assigned operator MAY **tighten** quarantine (`SetQuarantine`
+  with `quarantined:true`, preserving the reason in force) and MUST be
+  accompanied by `graph_node_quarantined{operator_quarantine}`. There is **no
+  release operation**: an `out_of_scope` node is released only by an operator
+  scope change and the recomputation it causes (A2-8.5, ADR-0016 §2);
+  releasing a `blacklisted` node is `conflict` and MUST NOT be offered
+  (A2-8.5). A release is stored as `quarantined:false` with
+  `quarantine_reason` absent; the A1 event is the only record of the previous
+  state.
 - **A2-8.2** Quarantine is **derived, never asserted**: the platform core
   policy engine (ADR-0005 §5, SPEC §6) evaluates the node's target identity
-  (`label`, `addresses`, `cidr`, `domain`, `sid`) against the engagement
+  against the engagement
   allowlist and the global/per-engagement blacklist at ingest. A caller MUST
   NOT set `quarantined` or `quarantine_reason` — the write types have no such
   fields (A0-6.2 → `validation`). Blacklist beats allowlist beats approval
   (ADR-0005 §3, SPEC §6).
+
+  The **per-kind evaluated field set** is closed — the policy engine MUST NOT
+  match any other field: `host` → `label` + `addresses` · `network` → `label` +
+  `cidr` + `addresses` · `identity`/`group` → `label` + `domain` + `sid` ·
+  `credential` → `label` + `domain` · `share` → `label` + `domain` · `service`
+  → `label` + `protocol` · `evidence_ref`/`finding`/`hypothesis` → derived
+  (below). `attrs`, `summary`, `claim` and `basis` MUST NOT be matched — they
+  are prose (A2-6.7), and matching prose lets a worker steer quarantine with a
+  sentence.
+
+  **Derivation.** A node whose kind has no identity field (`finding`,
+  `hypothesis`, `evidence_ref`) is quarantined by derivation from its edges —
+  if any non-retracted edge connects it to a quarantined node it is quarantined
+  with the same reason; and quarantine propagates **one hop** along
+  `reachable`, `authenticates_to`, `grants_access` from a quarantined
+  `host`/`network` to the attached `service`/`share`. Neither rule is
+  transitive beyond what is stated.
+
+  **Recomputation triggers** (closed): on a scope/blacklist change (A2-8.5),
+  on a revision that changes any identity field, and on a new node or a new
+  edge touching a quarantined node. A1's `quarantine_recomputed.trigger` is
+  the closed list `scope_changed · blacklist_changed · node_written ·
+  edge_written` (A1-3.3) — the last two are the recomputations a new node or a
+  new edge touching a quarantined node causes.
+
+  `internal/graph` declares and consumes exactly one interface:
+  `type QuarantineDecider interface { Classify(ctx context.Context,
+  engagementID string, n NodeDraft) (QuarantineState, error) }`.
+  `internal/policy` provides the implementation; `internal/graph` never imports
+  `internal/policy` (DESIGN §1 layering, DESIGN §4: interfaces are defined at
+  the consumer).
+  `Tests: TestPerKindMatchedFields, TestOneHopPropagation,
+  TestIdentitylessNodeQuarantinedByDerivation,
+  TestQuarantineRecomputedOnEveryTrigger`.
 - **A2-8.3** A quarantined node is **recorded, never actionable** (ADR-0016 §2,
   SPEC §6): it MUST NOT be returned as a candidate target by any
   planning-facing read (A2-12.4), MUST NOT be accepted as the target of a
@@ -421,6 +640,15 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   reachable for it — the policy check runs first), and MUST NOT be used to
   derive scope. Recording a discovery is itself sensitive (ADR-0016
   Consequences), so A2-9's minimization rules apply to quarantined nodes too.
+
+  The target of a spawn or action is **never** taken from a graph field. The
+  scope engine resolves the target itself (A7 action spec); the graph node a
+  request cites MUST be named by `gn_` id so the quarantine check is on the id,
+  not on a worker-supplied string. A request citing a quarantined node id is
+  refused **before** approval routing with
+  `action_blocked{reason:"target_quarantined"}` (A1-3.3).
+  `Tests: TestQuarantinedNodeNotTargetableWithValidApproval,
+  TestTargetResolvedByIDNotByString`.
 - **A2-8.4** Quarantine propagates to edges by derivation, not by flag: an edge
   with a quarantined endpoint MUST NOT be returned by planning-facing reads
   (A2-3.9).
@@ -429,8 +657,16 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   overridden by scopes or approvals (ADR-0005 §3). `out_of_scope` changes only
   when an operator changes the engagement scope (Q6: machine principals never
   mutate scope/blacklist); the platform MUST recompute quarantine on such a
-  change and MUST record the recomputation as an A1 event. **PO confirm**
-  (§6.3: whether a blacklisted discovery is recorded at all, or refused).
+  change and MUST record the recomputation as an A1 event.
+
+  A blacklisted discovery is **recorded, not refused**: it is stored with
+  `quarantine_reason:"blacklisted"`, permanently non-releasable, absent from
+  planning views (A2-12.5), reported as "not tested" (A2-8.6), and the write
+  MUST emit `graph_node_quarantined{blacklist_match}` (A2-8.10, A2-8.1's
+  mapping). **PO confirm** (§6 item 12: the alternative reading of ADR-0016 §2
+  is to refuse the write and store nothing).
+  `Tests: TestBlacklistedNodeSurvivesScopeWidening,
+  TestBlacklistedDiscoveryIsRecordedNotRefused`.
 - **A2-8.6** Reporting handover (Q5): quarantined nodes MUST be included in the
   reporting handover and marked *not tested*. The machine-readable marker is
   `quarantined: true` plus `quarantine_reason`; the words "not tested" are
@@ -439,19 +675,33 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   inside an attack path.
 - **A2-8.7** An operator MAY exclude a quarantined node from the report by
   setting `report_excluded: true`, which MUST be accompanied by an A1 event
-  naming the operator, the `gn_` id and the reason text. Exclusion-by-flag over
+  naming the operator, the `gn_` id and the reason text. `report_excluded`
+  MUST be settable to `true` **only** on a node with `quarantined:true` (Q5
+  authorizes removal of quarantined discoveries from the report only). An
+  attempt on a non-quarantined node is `conflict` (A0-3.1, immutable state) and
+  MUST be recorded as `action_blocked{reason:"graph_write_rejected",
+  action_kind:"graph_write"}` (A1-3.3). Removing a confirmed finding from a
+  report is expressed by a revision (A2-4) to `status:"refuted"` or
+  `severity:"info"`, never by a flag. Exclusion-by-flag over
   deletion: the graph stays intact, the exclusion is auditable and reversible,
   and no `supersedes` chain or evidence reference breaks (ADR-0016 §4). A
-  delete endpoint for graph content MUST NOT exist in v1. **PO confirm** (§6.4).
+  delete endpoint for graph content MUST NOT exist in v1.
+  `Tests: TestReportExcludedRequiresQuarantine,
+  TestMachinePrincipalCannotSetReportExcluded`. **PO confirm** (§6.4).
 - **A2-8.8** `report_excluded` MUST NOT be settable by a machine principal
   (Q6) and MUST NOT alter planning behaviour — it is a reporting filter only.
+  `Tests: TestQuarantineFlagCannotBeSuppliedOnWrite,
+  TestOperatorReportExclusionIsEventLogged`.
 - **A2-8.9** Why mutability does not break ordering (A0-4.3): `quarantined`,
   `quarantine_reason`, `report_excluded` and `retracted` MUST NOT participate
-  in any collection order, cursor or `seq` (A2-1.4). Every A2 collection orders
-  by `(seq, id)` — both immutable — so an operator flipping a flag mid-paging
+  in any collection order, cursor or `graph_seq` (A2-1.4, A2-1.4a). Every A2
+  collection orders by `(graph_seq, graph_node_id)` for nodes and
+  `(graph_seq, graph_edge_id)` for edges — all four immutable — so an operator
+  flipping a flag mid-paging
   can change *which* rows match a filter but can never skip or duplicate a row
   in an in-flight page walk. Clients MUST still deduplicate by id and MUST NOT
   assume a paged set is a snapshot (A0-4.7: mutable rows, no isolation knob).
+  `Tests: TestQuarantineFlagFlipDoesNotSkipRows`.
 - **A2-8.10** A quarantine hit is a security-relevant observation: the platform
   MUST emit an A1 event when a node is quarantined at ingest (`blacklisted` in
   particular), so "the agent saw a forbidden target and did not touch it" is
@@ -475,17 +725,54 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   the graph entirely, no graph read, stage view (A3) or report path can carry
   them to the LLM gateway; the gateway's exclusion and scanning remain in force
   as defence in depth (ADR-0020 §2, §5).
-- **A2-9.4** Ingest scanning: the platform MUST run a stdlib pattern scan
-  (`regexp`) over every string field and every `attrs` value for known secret
-  shapes (PEM blocks, NTLM/base64 hash shapes, cloud key prefixes, `krbtgt`
-  ticket material, high-entropy bearer strings) and MUST reject a match with
-  `validation` naming the **field** and the rule — never echoing the value
-  (A0-3.4 permits echoing untrusted material; A2-9.5 overrides that here).
-  **PO confirm** (§6.10: reject vs redact-and-record).
+
+  The pattern set is A2-9.4's rule table and nothing else: rule ids live in exactly
+  one document, and an error MUST name the field and the rule id, never the value, a
+  prefix of it, or a digest of it (A0-3.4, A2-9.5). The scan is a **filter, not a
+  guarantee** — a hostile worker can encode, split or re-format a secret past any
+  pattern set. Egress exclusion (ADR-0020 §4) is the enforcement point and MUST be
+  applied independently at the gateway to every string that leaves the platform; for an
+  engagement whose policy is not `local_only` the gateway MUST exclude by **kind** (no
+  `credential` node, no node with `credential_kind` set, no `attrs` of such a node) and
+  `llm_call` MUST record the exclusion in `excluded_secret_count`.
+- **A2-9.4** Ingest scanning: the platform MUST run the `internal/secretscan`
+  stdlib pattern scan (`regexp`) over every string field and every `attrs`
+  value of a node or edge, and MUST reject a match with `validation` naming the
+  **field** and the **rule id** — never echoing the value (A0-3.4 permits
+  echoing untrusted material; A2-9.5 overrides that here). The rule set below
+  is **normative, closed and additive-only** (A0-6.5): an implementation MUST
+  run every rule, and a rule id not in this table MUST NOT be reported. Reject,
+  never redact (§6 item 10, ruled once for A1 §6.4 and A2 §6.10).
+
+  | rule id | Go regexp | fields scanned | note |
+  |---|---|---|---|
+  | `SEC-PEM` | ``-----BEGIN [A-Z ]*PRIVATE KEY-----`` | all string fields, every `attrs` value | PEM private-key block header; the block body is never accepted either |
+  | `SEC-NTLM` | ``(?i)\b[0-9a-f]{32}\b`` | all string fields, every `attrs` value | 32-hex NTLM/LM hash shape. Known false-positive class: a bare 32-hex token in prose (reject anyway, §6 item 10) |
+  | `SEC-KRB` | ``(?i)krbtgt[/@][A-Za-z0-9._-]{1,128}`` | all string fields, every `attrs` value | `krbtgt` ticket material / TGT principal form |
+  | `SEC-AWSKEY` | ``(AKIA\|ASIA)[0-9A-Z]{16}`` | all string fields, every `attrs` value | AWS access-key id (long-term and temporary) |
+  | `SEC-GCPKEY` | ``AIza[0-9A-Za-z\-_]{35}`` | all string fields, every `attrs` value | Google API / service-account key shape; a GCP service-account *private key* is `SEC-PEM` |
+  | `SEC-AZUREKEY` | ``(?i)(AccountKey\|SharedAccessKey\|sig)=[A-Za-z0-9+/=]{20,}`` | all string fields, every `attrs` value | Azure storage account key, SAS signature and connection-string shapes |
+  | `SEC-JWT` | ``eyJ[0-9A-Za-z_-]+\.[0-9A-Za-z_-]+\.[0-9A-Za-z_-]+`` | all string fields, every `attrs` value | compact JWS/JWT — the payload is attacker-readable and often holds claims |
+  | `SEC-BEARER` | ``(?i)(bearer\|token\|api[_-]?key\|password\|passwd\|secret)\s*[:=]\s*\S{8,}`` | all string fields, every `attrs` value | `key: value` credential assignment in prose |
+  | `SEC-URLCRED` | ``[a-z][a-z0-9+.-]*://[^/\s:@]{1,64}:[^/\s:@]{1,64}@`` | all string fields, every `attrs` value | userinfo credentials embedded in a URL |
+  | `SEC-ENTROPY` | not a regexp — Shannon entropy **≥ 4.5 bits/char** over a window of **≥ 32 characters** drawn from a base64/hex alphabet (`[A-Za-z0-9+/=_-]`); the formula `-Σ p(c)·log2 p(c)` over the window and the window size are part of the rule | every string field and every `attrs` value of ≥ 32 characters | high-entropy bearer material with no keyword anchor; MUST be deterministic (`TestEntropyRuleIsDeterministic`) |
+
+  "all string fields" means every stored string of the node or edge being
+  written — `label`, `summary`, `claim`, `basis`, `protocol`, `domain`, `sid`,
+  `cidr`, `transport`, every `addresses` entry, every edge field — and every
+  `attrs` value. Provenance is scanned too (A2-5.8).
+
+  The corpus planted by `TestEventSecretFreeSerialization` and
+  `TestGraphSecretFreeSerialization` is exactly one value per rule id and lives
+  in the shared suite; a rule added later adds a corpus entry.
+  `Tests: TestEveryRuleIDMatchesItsCorpusValue, TestNoFalsePositiveOnBenignCorpus,
+  TestErrorMessageNamesFieldAndRuleIDOnly, TestEntropyRuleIsDeterministic,
+  TestGraphSecretFreeSerialization`.
 - **A2-9.5** Secrets never appear in errors or logs (ADR-0019 §5, A0-3.7):
   an error `message`, an error `attrs` entry and any `slog` record MUST NOT
-  contain a rejected secret value, a prefix of it, or its hash. The message
-  names the field, the rule id and the byte length only.
+  contain a rejected secret value **in whole, in part or as a digest** — not
+  the value, not a prefix of it, not its hash (A0-3.4's exception, PAIR-X1).
+  The message names the field, the rule id (A2-9.4) and the byte length only.
 - **A2-9.6** What a worker MUST do with a captured secret instead (Q6 worker
   addendum — the worker is report-only and has **no** graph access): upload it
   to the evidence store (`evidence:upload`), reference the returned `evi_` id in
@@ -494,10 +781,13 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   the secret in an event payload, a task result, a log line, a model prompt
   (ADR-0020 §4) or any graph-bound content.
 - **A2-9.7** Negative tests (shared suite, `contracts/README.md` "secret-free
-  serialization"):
+  serialization"). The planted corpus is exactly one value per A2-9.4 rule id
+  and lives in the shared suite:
   - `TestGraphSecretFreeSerialization` — for a corpus of writes with planted
-    secrets (an NTLM-shaped hash, a PEM private key, a cloud access-key id, a
-    bearer token) in `label`, `summary`, `attrs` values and edge fields: the
+    secrets (one per A2-9.4 rule id: an NTLM-shaped hash, a PEM private key, a
+    cloud access-key id, a bearer token, a URL with embedded credentials, a
+    JWT, a high-entropy string) in `label`, `summary`, `attrs` values and edge
+    fields: the
     write is rejected, **and** no planted value appears in the stored node, the
     serialized node, the response body, or the captured `slog` output.
   - `TestCredentialNodeHoldsReferenceOnly` — a `credential` node round-trips
@@ -522,9 +812,17 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   not-applicable fields (A2-2.3) · (7) value types and enums (A2-1.7, A2-2.4–6)
   · (8) size caps (A2-7) · (9) `attrs` shape and reserved keys (A2-6) ·
   (10) secret scan (A2-9.4) · (11) edge endpoints, cardinality, cycles
-  (A2-3) · (12) provenance establishment (A2-5) · (13) policy evaluation and
-  quarantine stamping (A2-8.2). A write MUST report exactly one error: the
-  first violated rule.
+  (A2-3) · (12) provenance establishment (A2-5) · (13) fingerprint, policy and
+  dedup, in this fixed order: **(13a)** compute `content_hash` over the A2-4.6
+  document; **(13b)** evaluate policy and quarantine (A2-8.2,
+  `QuarantineDecider`); **(13c)** **then** attempt the dedup collapse of
+  A2-3.4/A2-4.7. A write MUST report exactly one error:
+  the first violated rule. A collapse still emits the A1 `graph_node_written`
+  (with `dedup_hit:true`) and still emits `graph_node_quarantined` when the
+  recomputed quarantine state differs from the stored one — so an agent that
+  re-observes a blacklisted host 500 times produces 500 chained signals, not
+  one. `Tests: TestValidationOrderIsDeterministic,
+  TestCollapseStillEmitsQuarantineEvent`.
 - **A2-10.3** Error kinds, per A0-3.1 and never invented here: schema, enum,
   id, type, not-applicable-field, endpoint-kind, attrs-shape, secret-scan and
   cycle violations → `validation` (400) · cap violations under mechanism R →
@@ -545,11 +843,26 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   kind, the offending endpoint kind and the allowed set from A2-3.2 (A0-6.3:
   the closed-list rule covers endpoint kinds, not just the edge kind itself).
 - **A2-10.6** The store seam MUST accept only values produced by the validated
-  constructors (`graph.NewNode`, `graph.NewEdge`); their fields are unexported
-  so no package can build an unvalidated node literal (DESIGN §1 layering,
-  ADR-0010). _Testable: the contract suite constructs nodes only through the
-  constructors, and a `go vet`-visible exported-field audit fails the build if
-  a mutable field appears._
+  constructors (`graph.NewNode`, `graph.NewEdge`), and it accepts a
+  `PendingNode`/`PendingEdge` and nothing else (§4). `Node` and `Edge` fields
+  stay **exported** with the sketched `json` tags — `encoding/json` cannot
+  marshal unexported fields, and no `go vet` exported-field audit exists. The
+  no-bypass guarantee is instead: (a) `NewNode`/`NewEdge` are the only
+  documented construction path; (b) the store seam re-validates every value it
+  is given (A2-10.7); (c) `TestNodeHasNoExportedContentSetter` — reflection
+  over `graph.Node`/`graph.Edge` asserts no exported method mutates a content
+  field (the four mutation methods below and the flags of A2-1.3/A2-3.9 are the
+  declared exceptions); (d) review per AGENTS.md. If the product owner prefers
+  unexported fields, A2 MUST specify `MarshalJSON`/`UnmarshalJSON` for `Node`
+  and `Edge`.
+
+  The graph store seam exposes exactly four mutation methods, each taking an
+  engagement id and each returning `notfound`/`conflict` per A2-10.3 —
+  `SetSupersededBy`, `SetQuarantine`, `SetReportExcluded`,
+  `SetEdgeRetracted`. No other update or delete method MAY exist (A1-7.2's rule
+  applied to the graph seam).
+  `Tests: TestNodeHasNoExportedContentSetter,
+  TestGraphSeamHasExactlyFourMutationMethods, TestNodeDraftRejectsPlatformFields`.
 - **A2-10.7** Validation MUST NOT be relaxed for internal callers: ingest,
   operator corrections and report building all pass through the same validator
   (Q3: the platform never trusts discipline — including its own agents').
@@ -562,7 +875,9 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
 
 - **A2-11.1** Every read and every write is engagement-scoped (ADR-0016 §1/§3,
   SPEC C8). The store seam MUST require an engagement id on every read method;
-  no unfiltered or multi-engagement read method MAY exist. _A method that can
+  no unfiltered or multi-engagement read method MAY exist. The seam exposes
+  exactly the four mutation methods of A2-10.6, each taking an engagement id.
+  _A method that can
   be called without an engagement id will eventually be (adversarial A12)._
 - **A2-11.2** No cross-engagement traversal is **expressible**: no endpoint,
   cursor, filter or store method accepts a list of engagement ids, and edges
@@ -580,14 +895,15 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
     every B-scoped read (node list, edge list, history read, drill-down input)
     returns only B rows; no A `gn_`/`ge_` id appears in any response byte.
   - `TestGraphNodeIDFromAIsNotFoundInB` — a well-formed A id requested in B
-    yields `notfound` (404) with an envelope whose `attrs.graph_node_id` is
-    either absent or the requested id, and whose `message` does not distinguish
-    "absent" from "elsewhere" (A0-3.9).
+    yields `notfound` (404) with an envelope whose `attrs.graph_node_id` **is
+    the requested id** (ids are not secrets, A0-1.7) and whose `message` does
+    not distinguish "absent" from "elsewhere" (A0-3.9).
   - `TestNoCrossEngagementEdge` — an edge whose endpoints lie in A and B is
     rejected `notfound`, and no edge row is created in either engagement.
   - `TestCursorFromEngagementARejectedInB` — replaying A's cursor (A0-4.4) on a
-    B-scoped list yields an empty page or `validation`, never A data;
-    authorization is re-derived per page, never from the cursor.
+    B-scoped list yields **`validation` (400)**, never A data and never a
+    silently empty page (A1-8.2 is the same oracle, PAIR-K1); authorization is
+    re-derived per page, never from the cursor.
   - `TestNoBulkReadSpansEngagements` — reflection/endpoint audit over the A4
     route table and the store seam: no graph read accepts more than one
     engagement id or omits it.
@@ -604,10 +920,10 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
 
   | Guarantee | Clause |
   |---|---|
-  | node reference shape `{id, kind, label, quarantined}` — every node has all four; `label` ≤ 128 B, `kind` ≤ 32 B | A2-2.2, A2-7.1 |
+  | node reference shape `{graph_node_id, kind, label, quarantined}` — every node has all four; `label` ≤ 128 B, `kind` ≤ 32 B | A2-1.6, A2-2.2, A2-7.1 |
   | full `summary` ≤ 512 B (≤ 2048 B for `finding`), available on a single-node drill-down read | A0-7.1, A2-7.1 |
   | current-ness is A2's: a view that filters to current nodes uses `superseded_by_id` absence; A3 MUST NOT walk `supersedes` chains itself | A2-1.8, A2-4.4 |
-  | deterministic ordering inputs: immutable `seq`, then `id` byte-wise (A0-1.9); no mutable field orders anything | A2-1.4, A2-8.9 |
+  | deterministic ordering inputs: immutable `graph_seq`, then `graph_node_id`/`graph_edge_id` byte-wise (A0-1.9); no mutable field orders anything | A2-1.4, A2-1.4a, A2-8.9 |
   | edge endpoint kinds are denormalized and validated (`source_kind`, `target_kind`), so a 1-hop drill-down needs no node fetch to label an edge | A2-3.8 |
   | quarantine is authoritative and already stamped; A3 MUST NOT re-derive scope | A2-8.1/8.2 |
   | per-record size bounds are enforced at ingest, so a view's byte budget is a function of *how many* records it includes, never of how large one can be | A2-7 |
@@ -632,19 +948,23 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   `quarantined` and `quarantine_reason` intact and MUST omit `report_excluded`
   nodes (A2-8.6/8.7); planning views MUST omit quarantined nodes entirely.
   Both rules are A2's; A3 implements them per view.
+  `Tests: TestQuarantinedNodeAbsentFromPlanningView,
+  TestRetractedEdgeAbsentFromPlanningView`.
 
 ## 4. Types
 
 Illustrative sketches — **not compiled** (`contracts/README.md`). They are the
 source of truth for field names and JSON shapes until `internal/graph` merges
-(DESIGN §1). One flat node type per A2-2.3 rather than a per-kind payload
+(DESIGN §1). **Domain layer** (DESIGN §1); imports foundation only:
+`internal/ids`, `internal/cjson`, `internal/errs`. One flat node type per
+A2-2.3 rather than a per-kind payload
 interface: no hand-rolled JSON type dispatch, one fixed key set for A0-2.14,
 one validator `switch` (DESIGN §2, ADR-0001/0010 stdlib-only).
 
 ```go
-// internal/graph — the A2 contract types. Foundation layer: imports internal/ids,
+// internal/graph — the A2 contract types. Domain layer: imports internal/ids,
 // internal/cjson, internal/errs only (DESIGN §1). No pgx here; the store seam is
-// internal/store (ADR-0010).
+// internal/store (ADR-0010). internal/graph never imports internal/policy (A2-8.2).
 package graph
 
 type NodeKind string
@@ -715,13 +1035,14 @@ const (
 	QuarantineBlacklist  QuarantineReason = "blacklisted"
 )
 
-type PrincipalKind string // A2-5.3
+type PrincipalKind string // A2-5.3: A1-2.1's list verbatim (PAIR-A1).
 
 const (
 	PrincipalPlatform     PrincipalKind = "platform"
 	PrincipalOrchestrator PrincipalKind = "orchestrator"
 	PrincipalWorker       PrincipalKind = "worker"
-	PrincipalOperator     PrincipalKind = "operator"
+	PrincipalNode         PrincipalKind = "node" // remote agent (Q9): required, A2-5.3
+	PrincipalUser         PrincipalKind = "user" // was "operator"; prose "operator" unchanged
 )
 
 type CredentialKind string // A2-2.4: class of material, never the material (A2-9).
@@ -741,41 +1062,49 @@ const (
 	AttrBool   AttrType = "bool"
 )
 
+// AttrValue serializes as the BARE scalar of its live field (A2-6.1): the wire
+// and canonical form of attrs is {"<key>": <string | integer | boolean>}, depth
+// exactly one, no wrapper object. Type is a Go-only discriminator and is never
+// serialized, hence json:"-" on every field below and hand-written methods.
 type AttrValue struct {
-	Type AttrType // which of Str/Num/Bool is live
-	Str  string   // ≤ AttrValueMaxBytes (A2-7.1)
-	Num  int64    // within A0-2.6
-	Bool bool
+	Type AttrType `json:"-"` // which of Str/Num/Bool is live
+	Str  string   `json:"-"` // ≤ AttrValueMaxBytes (A2-7.1)
+	Num  int64    `json:"-"` // within A0-2.6
+	Bool bool     `json:"-"`
 }
 
-// A2-local cap constants (A2-7.1). Q4 constants come from A0-7.1 and are not
-// redeclared here; §6.4 asks A0 to adopt the A2-local ones into its table.
+// MarshalJSON emits the bare scalar of the live field; UnmarshalJSON accepts a
+// JSON string, integer or boolean only and rejects null, floats, arrays and
+// objects with errs kind "validation" (A2-6.1). Round-trip preserves Type.
+func (v AttrValue) MarshalJSON() ([]byte, error)
+func (v *AttrValue) UnmarshalJSON(b []byte) error
+
+// Cap constants: A2 declares none of the A0-7.1 registry values (PAIR-N1) —
+// ToolVersionMaxBytes (64), EvidenceRefsMax (8), MaxSupersedeChain, AttrsMaxKeys,
+// AttrKeyMaxBytes, AttrValueMaxBytes, AttrsTotalMaxBytes, AddressesMax,
+// NodeSummaryMaxBytes and FindingSummaryMaxBytes come from internal/caps (A0-7.1).
+// A2's former `ToolVersionMaxBytes = 32` and `EvidenceIDsMax` are deleted.
+// Only these field classes remain A2-local (A0-7.7 delegation, A2-7.1):
 const (
 	NodeLabelMaxBytes       = 128
 	HypothesisClaimMaxBytes = 512
 	HypothesisBasisMaxBytes = 1024
-	AttrValueMaxBytes       = 512
-	AttrsTotalMaxBytes      = 4096
-	AttrsMaxKeys            = 16
-	EvidenceIDsMax          = 8
-	AddressesMax            = 16
 	AddressMaxBytes         = 64
-	ToolVersionMaxBytes     = 32
-	MaxSupersedeChain       = 64 // A2-4.4/4.5: bound on one history walk
+	ProvenanceMaxEntries    = 8 // A2-4.7
 )
 
-// Provenance is mandatory on every node and edge (A2-5.1) and is
-// platform-stamped only (A2-5.2). Absent optional fields are omitted, never
-// null (A0-8.3).
+// Provenance is one entry of the mandatory provenance list (A2-5.1, A2-4.7:
+// ≤ 8 entries, ordered by the seq of event_id) and is platform-stamped only
+// (A2-5.2). Absent optional fields are omitted, never null (A0-8.3).
 type Provenance struct {
 	PrincipalKind     PrincipalKind `json:"principal_kind"`
 	RunID             string        `json:"run_id"`
 	JobID             string        `json:"job_id,omitempty"`
 	TaskID            string        `json:"task_id,omitempty"`
 	AgentNodeID       string        `json:"agent_node_id,omitempty"` // slp_node_ (Q9), never "node_id" (A2-1.6)
-	OperatorID        string        `json:"operator_id,omitempty"`   // blocked until A0/A5 register the prefix (§6.2)
+	UserID            string        `json:"user_id,omitempty"`       // usr_ (A0-1.2, AM-1); was operator_id
 	ToolID            string        `json:"tool_id,omitempty"`       // tool_ (A0-1.3)
-	ToolVersion       string        `json:"tool_version,omitempty"`  // registry string, not part of tool_id
+	ToolVersion       string        `json:"tool_version,omitempty"`  // ≤ ToolVersionMaxBytes (64, A0-7.1)
 	EventID           string        `json:"event_id"`                // originating A1 event (A2-5.4)
 	RecordedAt        string        `json:"recorded_at"`             // platform time, A0-5.1/5.4
 	ObservedClaimedAt string        `json:"observed_claimed_at,omitempty"` // untrusted (A0-5.7)
@@ -789,13 +1118,21 @@ type QuarantineState struct {
 	Reason      QuarantineReason // "" when not quarantined
 }
 
+// QuarantineDecider is the one interface internal/graph declares and consumes
+// (A2-8.2, DESIGN §4: interfaces are defined at the consumer). internal/policy
+// implements it; internal/graph never imports internal/policy.
+type QuarantineDecider interface {
+	Classify(ctx context.Context, engagementID string, n NodeDraft) (QuarantineState, error)
+}
+
 // Node is one graph node. Fields are immutable except the quarantine and
-// report flags (A2-1.3, A2-8). Unexported in the implementing package: only
-// NewNode may build one (A2-10.6).
+// report flags (A2-1.3, A2-8). Fields are EXPORTED with these json tags;
+// NewNode is the only documented construction path and the seam re-validates
+// (A2-10.6).
 type Node struct {
-	ID           string   `json:"id"`           // gn_ (A0-1.2)
+	ID           string   `json:"graph_node_id"` // gn_ (A0-1.2, A2-1.6)
 	EngagementID string   `json:"engagement_id"`
-	Seq          int64    `json:"seq"`          // immutable order key (A2-1.4)
+	GraphSeq     int64    `json:"graph_seq"`     // immutable order key (A2-1.4, A2-1.4a)
 	Kind         NodeKind `json:"kind"`
 
 	Label   string   `json:"label"`
@@ -829,27 +1166,30 @@ type Node struct {
 	ReportExcluded bool             `json:"report_excluded"`           // A2-8.7, always present
 	SupersedesID   string           `json:"supersedes_id,omitempty"`   // A2-4.2
 	SupersededByID string           `json:"superseded_by_id,omitempty"`
-	Provenance     Provenance       `json:"provenance"`
+	Provenance     []Provenance     `json:"provenance"`                // ≤ 8 entries, by event seq (A2-4.7)
 }
 
 // Edge is one directed relationship (A2-3). Content is immutable; only
 // Retracted may change (A2-3.9).
 type Edge struct {
-	ID           string    `json:"id"` // ge_
+	ID           string    `json:"graph_edge_id"` // ge_ (A0-1.2, A2-1.6)
 	EngagementID string    `json:"engagement_id"`
-	Seq          int64     `json:"seq"`
+	GraphSeq     int64     `json:"graph_seq"`
 	Kind         EdgeKind  `json:"kind"`
 	SourceID     string    `json:"source_id"` // gn_
 	SourceKind   NodeKind  `json:"source_kind"`
 	TargetID     string    `json:"target_id"` // gn_
 	TargetKind   NodeKind  `json:"target_kind"`
 	Retracted    bool      `json:"retracted"`
-	Provenance   Provenance `json:"provenance"`
+	Provenance   []Provenance `json:"provenance"`
 }
 
 // contentDoc is the purpose-built document content_hash is computed over
 // (A2-4.6). Fixed key set, zero values for inapplicable fields (A0-2.14),
 // empty A0-2.12 exclusion list, canonicalized by internal/cjson (A0-2).
+// Node MUST NOT be passed to cjson for fingerprinting (A2-4.6): only this type.
+// Attrs, EvidenceIDs and Addresses MUST be non-nil before marshaling, and
+// Addresses/EvidenceIDs are sorted ascending and deduplicated first (A2-4.6).
 type contentDoc struct {
 	Addresses      []string       `json:"addresses"`
 	Attrs          Attrs          `json:"attrs"`
@@ -873,22 +1213,64 @@ type contentDoc struct {
 	Transport      string         `json:"transport"`
 }
 
-// NewNode validates (A2-10.2 order) and returns a node ready for the store
-// seam; NewEdge does the same for edges. Both are the only constructors
-// (A2-10.6). Errors carry an A0-3 kind: validation, summary_too_large,
-// conflict, notfound (A2-10.3).
-func NewNode(in NodeDraft, prov Provenance, q QuarantineState) (Node, error)
-func NewEdge(in EdgeDraft, prov Provenance) (Edge, error)
+// NodeDraft is the ingest path's input: content only, no platform-set field.
+type NodeDraft struct {
+	Kind                     NodeKind
+	Label, Summary           string
+	Attrs                    Attrs
+	EvidenceIDs, Addresses   []string
+	CIDR                     string
+	Port                     int
+	Transport, Protocol      string
+	SID, Domain              string
+	CredentialKind           CredentialKind
+	EvidenceID               string
+	MediaKind                MediaKind
+	SizeBytes                int64
+	Severity                 Severity
+	Claim, Basis             string
+	Status                   string
+	SupersedesID             string // A2-4.2: set by the revising write, not by the platform
+}
 
-// NodeDraft / EdgeDraft are the ingest-side inputs: no id, no engagement_id,
-// no seq, no provenance, no quarantine fields — the platform supplies all of
-// them (A2-1.5, A2-5.2, A2-8.2). A draft that carries one is an unknown field
-// on the wire (A0-6.2).
-type NodeDraft struct{ /* Node minus platform-set fields */ }
-type EdgeDraft struct{ /* Kind, SourceID, TargetID */ }
+// PendingNode is validated content + provenance + quarantine state + content_hash,
+// with no id and no graph_seq (assigned at insert, A2-1.2/A2-1.4a). DESIGN §4: a
+// constructor never returns a half-built value.
+type PendingNode struct { /* unexported; NewNode is the only way to build one */ }
 
-// CurrentNode reports whether n is the current revision (A2-1.8).
+func NewNode(in NodeDraft, prov Provenance, q QuarantineState) (PendingNode, error)
+
+// WriteNode assigns graph_node_id (A0-1.4) and graph_seq (A2-1.4a) inside the insert
+// transaction, applies A2-3.4/A2-4.7 dedup, and returns the complete Node. A2-10.6:
+// the seam accepts PendingNode and nothing else.
+func WriteNode(ctx context.Context, engagementID string, n PendingNode) (Node, error)
+
+// Edges follow the same shape: EdgeDraft carries Kind, SourceID, TargetID and
+// nothing else; PendingEdge adds provenance; WriteEdge assigns graph_edge_id and
+// graph_seq inside the insert transaction and applies A2-3.4 dedup.
+type EdgeDraft struct{ Kind EdgeKind; SourceID, TargetID string }
+type PendingEdge struct { /* unexported; NewEdge is the only way to build one */ }
+
+func NewEdge(in EdgeDraft, prov Provenance) (PendingEdge, error)
+func WriteEdge(ctx context.Context, engagementID string, e PendingEdge) (Edge, error)
+
+// NewNode/NewEdge validate in A2-10.2 order; errors carry an A0-3 kind:
+// validation, summary_too_large, conflict, notfound (A2-10.3). A2-10.6 applies
+// to PendingNode and Node alike.
+// ID, EngagementID, GraphSeq, ContentHash, Quarantined, QuarantineReason,
+// ReportExcluded, SupersededByID and Provenance are platform-set and absent
+// from the draft; a request body carrying one is an unknown field on a write
+// (A0-6.2, A2-1.5, A2-5.2).
+
+// Current reports whether n is the current revision (A2-1.8).
 func (n Node) Current() bool { return n.SupersededByID == "" }
+
+// The seam's only mutation methods (A2-10.6, A2-11.1): four, each taking an
+// engagement id, each returning notfound/conflict per A2-10.3.
+func SetSupersededBy(ctx context.Context, engagementID, nodeID, byNodeID string) error
+func SetQuarantine(ctx context.Context, engagementID, nodeID string, q QuarantineState) error
+func SetReportExcluded(ctx context.Context, engagementID, nodeID string, excluded bool) error
+func SetEdgeRetracted(ctx context.Context, engagementID, edgeID string, retracted bool) error
 ```
 
 ### 4.1 JSON examples

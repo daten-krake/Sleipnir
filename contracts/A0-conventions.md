@@ -34,12 +34,17 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
 - **A0-1.1** Every entity identifier is `<prefix><body>`. The body is **26
   characters** of lowercase Crockford base32 (`0123456789abcdefghjkmnpqrstvwxyz`
   — no `i l o u`) encoding 128 bits in ULID layout: 48-bit unsigned millisecond
-  Unix time (10 chars) followed by 80 bits from `crypto/rand` (16 chars).
+  Unix time (10 chars) followed by 80 bits from `crypto/rand` (16 chars). The
+  48-bit millisecond value is encoded big-endian in 10 characters, whose first
+  is therefore in `0`–`7`; the 80 random bits are encoded in 16 characters with
+  no restriction. Validation (A0-1.5) is the regex only: a body whose first
+  character is `8`–`z` is accepted but never generated.
   _One generator, no coordination, lexicographic order = chronological order,
   stdlib-only (`crypto/rand` + a 32-char alphabet table) — **PO confirm**._
-- **A0-1.2** Prefixes are closed and per type. `slp_node_` is fixed by Q9; the
-  rest are recommendations (**PO confirm**). `B` below is the body of A0-1.1 and
-  the regex character class `[0-9a-hjkmnp-tv-z]` is exactly that alphabet.
+- **A0-1.2** Prefixes are closed and per type; the set is closed at **12**
+  prefixes. `slp_node_` is fixed by Q9; the rest are recommendations (**PO
+  confirm**). `B` below is the body of A0-1.1 and the regex character class
+  `[0-9a-hjkmnp-tv-z]` is exactly that alphabet.
 
   | Entity | Prefix | Example | Regex | Total len |
   |---|---|---|---|---|
@@ -54,6 +59,7 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   | evidence (ADR-0009) | `evi_` | `evi_01m1y2whfh3ca875z2x8v8h7qt` | `^evi_B{26}$` | 30 |
   | approval (ADR-0018) | `apr_` | `apr_01m1y2whfh0asxstccc64q4cfx` | `^apr_B{26}$` | 30 |
   | tool (registry entry, ADR-0008) | `tool_` | `tool_01m1y2whfhfjdvwqp9pfxqekmf` | `^tool_B{26}$` | 31 |
+  | user (human principal, SPEC §3) | `usr_` | `usr_01m1y2whfhv3x6z9b2d5f8h1jk` | `^usr_B{26}$` | 30 |
 
 - **A0-1.3** Tool identifiers follow A0-1.1 like every other entity; the
   human-readable `name` and `version` are separate registry fields (ADR-0008,
@@ -64,11 +70,13 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   counter, a name, a hash of user input, or any client-supplied material. A
   uniqueness violation at insert MUST surface as `internal` (A0-3) and MUST NOT
   be silently retried in a loop.
+  Tests: TestIDGenerationUsesCryptoRand, TestUniquenessViolationIsInternal.
 - **A0-1.5** Validation happens at every trust boundary, anchored and
   byte-exact against the type's regex. Decoders MUST NOT apply Crockford
   normalization (case folding, `i`/`l` → `1`, `o` → `0`): an id that is not a
   byte-exact match is invalid → `validation`. _Byte-exactness matters because
   ids enter canonical JSON and therefore digests (A0-2)._
+  Tests: TestValidIsByteExact, TestValidRejectsNormalization.
 - **A0-1.6** Identifiers are **opaque**. A client MUST NOT parse the prefix or
   body, derive creation time, ordering, sharding or type from an id, or
   construct an id. The time-sortability of A0-1.1 is a platform storage
@@ -83,7 +91,11 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   carrying the `slp_` namespace — Q9 is binding, and a distinctive prefix makes
   a leaked token detectable by secret scanners.
 - **A0-1.9** Ordering by identifier text in PostgreSQL MUST use `COLLATE "C"`
-  so database order equals byte order (A0-4.3). _Second-order consequence of
+  so database order equals byte order (A0-4.3). The `COLLATE "C"` ordering is
+  declared **on the column** (DDL); queries MUST NOT re-specify it (a per-query
+  `COLLATE` silently disables index use on every paginated read, A0-4.6).
+  Tests: TestIDOrderingMatchesByteOrderCollateC — integration, opt-in per
+  DESIGN §8. _Second-order consequence of
   A0-1.1: the default collation is locale-aware and would not sort `0` < `B` <
   `_` < `a`._
 - **A0-1.10** A prefix MUST NOT be renamed, reused for another type, or dropped
@@ -105,7 +117,13 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
 - **A0-2.3** Output MUST be UTF-8 without BOM. Input MUST be UTF-8; invalid
   UTF-8, a BOM, empty input, or trailing data after the top-level value MUST be
   rejected → `validation`. Non-ASCII characters are emitted **literally** (no
-  `\uXXXX` re-encoding) except control characters (A0-2.7).
+  `\uXXXX` re-encoding) except control characters (A0-2.7). Implementations MUST
+  NOT rely on `encoding/json` for UTF-8 validation — it substitutes U+FFFD. The
+  canonicalizer MUST (a) reject the whole document when `utf8.Valid(doc)` is
+  false and (b) scan every `\u` escape and reject a surrogate code point
+  (`D800`–`DFFF`) not followed by a complementary surrogate forming a valid
+  pair; both `validation`.
+  Tests: TestInvalidUTF8Rejected, TestLoneSurrogateRejected.
 - **A0-2.4** Object keys MUST be sorted ascending by the **unsigned byte value
   of their UTF-8 encoding**. This deviates from RFC 8785 §3.2.3 (UTF-16 code
   units) only for keys containing code points ≥ U+10000, where byte order puts
@@ -120,13 +138,25 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   the last duplicate, and `encoding/json` matches field names
   case-insensitively, so `{"a":1,"A":2}` would otherwise resolve by map
   iteration order. _A nondeterministic digest is the failure mode this clause
-  exists to prevent._
+  exists to prevent._ The `Token()` walk MUST call `Decoder.UseNumber()` and MUST
+  re-validate every number's **literal token text** against
+  `^-?(0|[1-9][0-9]{0,15})$` before range-checking with `strconv.ParseInt`
+  against A0-2.6's `[-(2^53-1), 2^53-1]`; a token whose text is not already
+  canonical (`.`, `e`/`E`, `+`, leading zeros, `-0`) is `validation`. The
+  canonicalizer emits the validated literal text verbatim. The walk MUST call
+  `Decoder.More()` after the top-level value (A0-2.3 no trailing data) and MUST
+  count nesting depth itself (`encoding/json` has none).
+  Tests: TestDuplicateKeyRejected, TestCaseDuplicateKeyRejected,
+  TestCanonicalEmitsNumberLiteralText, TestRejections.
 - **A0-2.6** Numbers MUST be integers in `[-(2^53-1), 2^53-1]`, written with no
   leading zeros (except a bare `0`), no `+`, no fraction, no exponent. The
   literal `-0`, any `.`, any `e`/`E`, `NaN` and `Infinity` MUST be rejected →
   `validation`. A type that is ever canonicalized MUST NOT declare a float
   field: use integers, or fixed-point with the scale fixed by the owning
-  contract. _RFC 8785 requires ECMAScript number serialization, which is
+  contract. The literal text of an accepted number matches
+  `^-?(0|[1-9][0-9]{0,15})$` (16 digits is the width of `2^53-1`) and is
+  re-emitted verbatim (A0-2.5). _RFC 8785 requires ECMAScript number
+  serialization, which is
   hand-rolled high-review-bar code (`AGENTS.md`) for a benefit nothing in the
   hashed payloads needs — **PO confirm**._
 - **A0-2.7** Strings: escape only `"`, `\`, and U+0000–U+001F. Use the short
@@ -134,16 +164,32 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   the other control characters; every other code point is literal. HTML
   escaping MUST NOT be applied (`<`, `>`, `&` stay literal — i.e.
   `SetEscapeHTML(false)` semantics); raw control bytes inside a string and lone
-  surrogates (`\ud800` unpaired) MUST be rejected → `validation`.
+  surrogates (`\ud800` unpaired) MUST be rejected → `validation` (A0-2.3 (b)).
+  `Canonical` MUST decode every JSON string escape in the input (`\uXXXX` incl.
+  well-formed surrogate pairs, `\n`, `\"`, `\\`) and re-emit per this clause; it
+  MUST NOT pass an input escape through. **U+2028 and U+2029 are emitted
+  literally (raw UTF-8, 3 B each), not as `\u2028`/`\u2029`; U+007F is literal
+  (1 B).** `encoding/json` escapes U+2028/9 unconditionally and HTML-escapes
+  `<>&`, so it MUST NOT be the canonical emitter — it MAY produce the
+  intermediate bytes that the canonicalizer re-parses (`CanonicalValue`), never
+  the final ones.
 - **A0-2.8** Array element order MUST be preserved exactly; arrays are never
-  sorted. `true`, `false`, `null` are lowercase.
+  sorted. `true`, `false`, `null` are lowercase. `null` is recognized when
+  scanning input and rejected by `Canonical` (A0-2.14); no contract document
+  contains it (A0-8.3).
 - **A0-2.9** Output MUST contain no insignificant whitespace: no spaces, tabs,
   newlines or indentation; `,` and `:` are bare separators.
 - **A0-2.10** The top-level value MUST be a JSON object. A top-level array,
   string, number or literal MUST be rejected → `validation`.
 - **A0-2.11** Input limits: nesting depth ≤ **32** levels, size ≤ **1 MiB**;
-  either exceeded → `validation`. _Untrusted-input bound (`AGENTS.md`
+  either exceeded → `validation`. Depth counts container boundaries — the
+  top-level object is level 1, each nested object or array adds 1, scalars are
+  not levels; a document at depth 32 MUST be accepted, at 33 rejected
+  (`validation`); size is `len(doc)` of the input; both are checked before
+  canonicalization. This walk is AGENTS.md high-review untrusted-input parsing.
+  _Untrusted-input bound (`AGENTS.md`
   high-review list); contract types nest ≤ 6 — **PO confirm**._
+  Tests: TestDepthLimit, TestSizeLimit.
 - **A0-2.12** A canonicalized type declares its **exclusion list**: a fixed set
   of *top-level JSON field names* removed before canonicalization (event chain
   fields `hash`, `prev_hash`, `seq`; approval decision fields). Exclusion lists
@@ -158,12 +204,20 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   zero value (`""`, `0`, `false`, `[]`, `{}`) when unset. No `omitempty`, no
   absent optional fields, no `null` (A0-8.3). The rule applies per concrete Go
   type; a kind-specific payload type (A1) has its own fixed key set.
+  Constructors MUST initialize every slice and map field of a canonicalized type
+  to a non-nil empty value (`events.NewEvent`, `graph.NewNode`,
+  `cjson.CanonicalValue`); `json.Marshal` emits `null` for a nil
+  slice/map/pointer, which changes every digest. **`cjson.Canonical` and
+  `cjson.CanonicalValue` MUST reject a `null` at any depth with `validation`.**
+  A canonical document containing `null` is a platform defect → `internal`.
   _Producer and verifier must agree byte-for-byte or ADR-0018 §2 re-validation
   aborts every action._
+  Tests: TestNilCollectionNeverSerializesAsNull, TestRejections.
 - **A0-2.15** A digest is SHA-256 over the canonical bytes, written as **64
   lowercase hex** characters (`crypto/sha256` + `encoding/hex`). A digest
   comparison that gates an action (chain verification, fingerprint match,
   webhook MAC) MUST use `crypto/subtle.ConstantTimeCompare` on decoded bytes.
+  Tests: TestDigestEqual, TestGatingComparisonsAreConstantTime.
 - **A0-2.16** Every record whose digest is persisted MUST also persist the
   **exact canonical bytes** the digest was computed over, and verification MUST
   recompute from those stored bytes — never from a re-serialization of decoded
@@ -181,15 +235,49 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   | V3 | `{"s":"a\"b\\c\nd\te\u0001f<>&\u00e9\u4e2d\ud83d\ude00","n":-42,"t":true}` | `{"n":-42,"s":"a\"b\\c\nd\te\u0001f<>&é中😀","t":true}` | 57 | `63fc2ef866b5542bfcd5d8c943f71a92b1b6a8a2403704f0416822a18aefcd6c` |
   | V4 | `{"arr":[3,1,2,{"y":1,"x":2}],"obj":{},"e":[]}` | `{"arr":[3,1,2,{"x":2,"y":1}],"e":[],"obj":{}}` | 45 | `d66e67ee4f3bef3250a4b86aa3ea680d7c9a5545424cf4316a9cf917e39db521` |
   | V5 | `{"engagement_id":"eng_01m1y2whfhgbz06ays6dxnvyws","kind":"tool_invoked","recorded_at":"2026-09-07T14:03:22.481Z","seq":4711,"prev_hash":"9b74c9897bac770ffc029102a200c5de","hash":"03c8a7d2b9e4f1a6d5c0b8e7f2a1d4c3b6a9e8f7d0c1b2a3e4f5061728394a5b"}`<br>exclusions: `seq`, `prev_hash`, `hash` | `{"engagement_id":"eng_01m1y2whfhgbz06ays6dxnvyws","kind":"tool_invoked","recorded_at":"2026-09-07T14:03:22.481Z"}` | 113 | `3695e846ce9e48d6577c0a7ef48ace7b9d34e4ca498dc91aac4309b40c4e10cb` |
-  | V6 | `{"😀":1,"\uFFFD":2}` (keys are U+1F600 and U+FFFD) | `{"\uFFFD":2,"😀":1}` (literal UTF-8: U+FFFD first) | 18 | `9fbfff35f05fb9c72de19e392d0a1b848acb4d6c42489709d709982d10dd883c` |
+  | V6 | `{"😀":1,"\uFFFD":2}` (keys are U+1F600 and U+FFFD) | `{"�":2,"😀":1}` (the U+FFFD key is the three bytes `EF BF BD`; the escape appears only in the input column; len 18 and the published digest are correct) | 18 | `9fbfff35f05fb9c72de19e392d0a1b848acb4d6c42489709d709982d10dd883c` |
+  | V7 | `{"s":"a\u2028b\u2029c\u007fd"}` | `{"s":"a b cd"}` (U+2028, U+2029 and U+007F are literal bytes, not escapes) | 19 | `aedd6df88cc462fdbdc5788549d753c9b8c21ac8b9e16c51c72016cf564c3e85` |
+  | V8 | `{"s":"<a href=\"x\">&é\u2028"}` | `{"s":"<a href=\"x\">&é "}` (`<`, `>`, `&` literal; `\"` stays escaped per A0-2.7) | 28 | `63995ca86de5cce6f4d74df8e1d90aed78918aad912cc7c7feaff4d89fb15b2d` |
 
   In V3 the canonical bytes contain literal UTF-8 `é` (2 B), `中` (3 B), `😀`
   (4 B), literal `<>&`, short escapes for newline/tab, `\u0001` in lowercase
-  hex, and keys reordered `n`,`s`,`t`. Rejections (each → `validation`, no
-  digest): `{"a":1,"a":2}` (duplicate) · `{"a":1,"A":2}` (case-duplicate) ·
-  `{"a":1.0}` · `{"a":1e3}` · `{"a":-0}` · `{"a":01}` · `{"a":"\ud800"}` ·
-  `{"a":1},` (trailing) · `[1,2]` (top level) · BOM-prefixed · 40-deep nesting
-  · `{"a":NaN}` · raw control byte in a string.
+  hex, and keys reordered `n`,`s`,`t`. In V6 the U+FFFD key is the three bytes
+  `EF BF BD` \u2014 the escape appears only in the input column; len 18 and the
+  published digest are correct. In V7 the canonical bytes carry a literal U+2028
+  (`E2 80 A8`), a literal U+2029 (`E2 80 A9`) and a literal U+007F (`7F`): all
+  three are invisible in a terminal, so verify by len 19 and the digest, not by
+  eye. In V8 `<`, `>`, `&` stay literal, `é` is `C3 A9`, U+2028 is `E2 80 A8`, and
+  `\"` stays escaped because A0-2.7 requires it.
+
+  **Notation, canonical-bytes column.** A `\uXXXX` sequence in that column is
+  **literal text** when it is a required JSON escape under A0-2.7 (V3's
+  `\u0001`; V8's `\"`, `\\`, and the `\n`/`\t` short escapes) and is otherwise
+  printed as **the character itself** (V6's U+FFFD key; V7's U+2028, U+2029 and
+  U+007F; V3's `é中😀`). Where a cell could be read both ways the `len` column
+  decides: V3 is 57 bytes only if `\u0001` is the six characters
+  `\`,`u`,`0`,`0`,`0`,`1`, and V6 is 18 bytes only if its first key is the three
+  bytes `EF BF BD` (the six-character reading would give 21 and a different
+  digest). The input column always shows the bytes as received, escapes included.
+
+  **V5 annotation.** V5 is a canonicalization vector with a **synthetic key
+  set**: `tool_invoked` is not an A1-3.1 kind and this is not a valid event
+  document (six keys, not the 17-key envelope of A1-1.1). The normative event
+  vector is A1 §4.3; the envelope field names are A1-1.1.
+
+  Rejections (each → `validation`, no digest): `{"a":1,"a":2}` (duplicate) ·
+  `{"a":1,"A":2}` (case-duplicate) · `{"a":1.0}` · `{"a":1e3}` · `{"a":1E3}`
+  (uppercase exponent) · `{"a":-0}` · `{"a":-0.0}` · `{"a":01}` ·
+  `{"a":9007199254740993}` (2^53+1, outside A0-2.6) ·
+  `{"a":10000000000000000000}` (20 digits, outside A0-2.5's token regex) ·
+  `{"a":"\ud800"}` (lone surrogate, A0-2.3) · `{"a":"\xff"}` (invalid UTF-8,
+  A0-2.3) · `{"a":null}` (A0-2.14) · `{"a":1},` (trailing) · `[1,2]` (top
+  level) · BOM-prefixed · 33-deep nesting (A0-2.11 boundary + 1) · 40-deep
+  nesting · a document larger than 1 MiB · `{"a":NaN}` · raw control byte in a
+  string.
+
+  Accepts (normative boundary cases): a **32-deep** document (A0-2.11 accepts
+  its own boundary) · `{"a":"\ud83d\ude00"}` (a well-formed surrogate pair,
+  emitted as the literal 😀, 4 B).
 
 ### A0-3 · Error kinds and HTTP mapping
 
@@ -207,7 +295,7 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   | `approval_required` | 409 | no | execution/spawn attempted with no valid approval for the fingerprint (ADR-0005 §1, ADR-0018). 409 keeps 403 for principal-level denial so an agent can tell "never allowed" from "not yet allowed" |
   | `approval_expired` | 409 | no | approval past its 2 h window (ADR-0012 §7, SPEC §5.6): orchestrator replans instead of waiting |
   | `integrity_failed` | 409 | no | hash-chain verification failed; export blocked until an operator override is logged as an event (Q11). Not 5xx: 5xx would be retried and alerted as a platform bug |
-  | `summary_too_large` | 413 | no | a capped field exceeded its Q4 budget under mechanism R (A0-7.6). Named by Q3/Q4; distinguishable from `validation` because the remedy is "send fewer bytes", not "fix a malformed field" |
+  | `summary_too_large` | 413 | no | a capped field **or count** exceeded a budget declared by its owning contract under mechanism R (A0-7.6) — the Q4 constants of A0-7.1 and the per-contract caps of A1-4.5 / A2-7.1. Named by Q3/Q4; distinguishable from `validation` because the remedy is "send fewer bytes", not "fix a malformed field" |
   | `timeout` | 504 | yes | a platform-side deadline expired (own DB, LLM gateway, broker) |
   | `upstream` | 502 | yes | an upstream (LLM endpoint, webhook target, container runtime) answered with an error or unusable bytes |
   | `rate_limited` | 429 | yes | platform rate limiter (ADR-0011 names rate limiting as part of the API attack surface). Reserved now so a later limiter does not have to reuse the non-retryable `conflict` |
@@ -225,9 +313,12 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   (`component.Function: what was attempted: key identifiers: cause`), MUST be
   self-contained for troubleshooting, and MUST NOT be parsed programmatically,
   matched by substring, or used as a control input. A message MAY echo untrusted
-  request material (target, tool name, field name); consumers MUST treat it as
+  request material (target, tool name, field name) **except a value rejected by
+  a secret-pattern rule, which MUST NOT be echoed in whole, in part or as a
+  digest (A2-9.5, A1-4.9)**; consumers MUST treat it as
   untrusted content when rendering or feeding it to a model (SPEC §6, ADR-0018
   §4).
+  Tests: TestSecretScanNamesFieldNotValue, TestNoSecretValueOrDigestInError.
 - **A0-3.5** For `internal` and `upstream` the cause segment MAY be generalized
   to the subsystem (`postgres: statement failed`, `llm: endpoint returned 500`)
   when the underlying text is not platform-controlled; the full cause chain
@@ -257,15 +348,24 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
 - **A0-3.10** Transport: `Content-Type: application/json; charset=utf-8`,
   status per table. For `rate_limited` the envelope MUST carry `retry_after_ms`
   and the response MUST carry `Retry-After` in whole seconds equal to
-  `ceil(retry_after_ms/1000)`; the two MUST agree. The HTMX face (ADR-0011)
+  `ceil(retry_after_ms/1000)`; the two MUST agree. A rate-limit response MUST
+  carry `retry_after_ms ≥ 1` and `Retry-After ≥ 1` (`ceil(retry_after_ms/1000)`):
+  the `≥ 1` floor **is** the field's presence rule, so the `omitempty` tag on
+  `RetryAfterMS` in the §4 sketch can never drop a rate-limit value, and a
+  `rate_limited` envelope without it is a platform defect → `internal`. The HTMX
+  face (ADR-0011)
   MUST NOT emit the envelope: it renders `message` through `html/template`
   (auto-escaped) and branches on `kind` server-side, never in client JS.
+  Tests: TestRetryAfterPresence, TestRetryAfterAgreement.
 - **A0-3.11** Retryability is per the table: `timeout`, `upstream`,
   `rate_limited` are retried with bounded exponential backoff plus jitter,
   honouring `retry_after_ms`; every other kind is terminal for the same
   request. Retrying a non-idempotent write is only safe where the owning
   contract defines a deduplication key — A1 MUST define one for `events:append`
-  (Q6 worker principal, offline buffering per ADR-0013).
+  (Q6 worker principal, offline buffering per ADR-0013). An owning contract MAY
+  declare one specific write retryable under `internal` where that contract
+  defines a deduplication key (A1-7.6); the retry MUST reuse that key. Every
+  other kind remains terminal.
 - **A0-3.12** An error kind MUST NOT be added, renamed, or repurposed inside
   `/api/v1` except additively (A0-6.5); a kind MUST NOT be reused for a
   different remedy, because agent behaviour is keyed to it.
@@ -283,22 +383,37 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   its own contract (A1, A4) built from an immutable unique key (append sequence
   or id) — never from a mutable field (`status`, `updated_at`, the quarantine
   or report-inclusion flag an operator changes per Q5). Text keys MUST compare
-  byte-wise (`COLLATE "C"`, A0-1.9).
+  byte-wise (`COLLATE "C"`, A0-1.9). Every paginated collection MUST have an
+  integer primary ordering key so A0-4.4's `{id,k}` cursor is expressible; a
+  text key is only the tie-breaker carried in `id`. A collection whose order key
+  is text MUST declare its own cursor shape in its own contract; A0-4.4's
+  two-key set is closed.
 - **A0-4.4** A cursor is base64url-unpadded (A0-8.5) of the **canonical JSON**
-  (A0-2) object `{"k":<ordering value of last row>,"id":"<id of last row>"}` —
-  the complete ordering tuple of the last returned row. Cursors are opaque:
-  replay byte-for-byte, never decode, construct or modify. No MAC is applied —
-  a cursor grants nothing: authorization is re-derived from the token on every
-  page (Q6, third enforcement layer), so a forged cursor yields at worst an
-  empty page or `validation`.
-- **A0-4.5** `limit` is a query parameter: default **100**, hard maximum
-  **1000**. A `limit` that is absent-and-unparseable, ≤ 0, non-integer, or
-  above the maximum MUST be rejected with `validation` — never silently
+  (A0-2) object `{"id":"<id of last row>","k":<ordering value of last row>}`
+  (canonical order puts `id` first, A0-2.4) — the complete ordering tuple of the
+  last returned row. Cursors are opaque: replay byte-for-byte, never decode,
+  construct or modify. No MAC is applied.
+
+  A cursor is a position hint, not a grant: authorization is re-derived per page
+  (A0-4.4), cursors are not integrity-protected, and a forged cursor yields an empty
+  page, `validation`, or a page whose ordering value is the one the platform resolved —
+  never a silently skipped range. The platform MUST derive the seek position from the
+  row its lookup of the cursor's `id` resolves to and MUST ignore `k` for seeking; if
+  `k` disagrees with that row's ordering value the response MUST be `validation`
+  (A0-4.8). `DecodeCursor(s string, k ids.Kind)` takes the id kind of the collection
+  being paged and validates `id` against it (A0-1.5).
+  Tests: TestDecodeCursorRejects, TestCursorWithInconsistentKAndIDRejected,
+  TestHasMoreDetection.
+- **A0-4.5** `limit` is a query parameter: absent → **100** (the default), hard
+  maximum **1000**. A `limit` that is present but unparseable, ≤ 0,
+  non-integer, or > 1000 MUST be rejected with `validation` — never silently
   clamped. _Silent clamping lets an agent believe it saw the whole collection
   (Q3: never trust client discipline) — **PO confirm**._
+  Tests: TestLimitValidation, TestLimitAboveMaxRejectedNotClamped.
 - **A0-4.6** Has-more detection: read `limit+1` rows, return the first `limit`,
   set `next_cursor` **iff** row `limit+1` existed. Contract test: a last page
   that exactly fills `limit` MUST NOT carry `next_cursor`.
+  Tests: TestHasMoreDetection.
 - **A0-4.7** Mid-paging semantics: the append-only collections (event log, Q11;
   graph, which revises by adding a new node with a `supersedes` edge rather
   than overwriting — ADR-0016 §4, Q2) give a cursor the semantics of a **stable
@@ -308,9 +423,11 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   rows, no snapshot is guaranteed: a client MUST deduplicate by id and MUST NOT
   assume a paged set reflects one point in time.
 - **A0-4.8** Cursor decode failure (bad base64 variant, non-canonical JSON,
-  wrong key set, id of the wrong type per A0-1) → `validation` telling the
-  client to restart from the first page. Cursors are not versioned and MUST NOT
-  be cached across platform releases.
+  wrong key set, id of the wrong type per A0-1, the cursor's `id` does not
+  resolve in this collection, or its `k` disagrees with the ordering value of
+  the row that `id` resolves to — A0-4.4) → `validation` telling the client to
+  restart from the first page. Cursors are not versioned and MUST NOT be cached
+  across platform releases.
 
 ### A0-5 · Time
 
@@ -325,15 +442,33 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
 - **A0-5.3** Parsing MUST reject, not normalize (Q3 philosophy): any other
   precision, a numeric offset (`+02:00`), lowercase `t`/`z`, a space separator,
   a leap second (`:60`), or a year outside `[2020, 2100)` → `validation`.
-  Implementation note: Go layout `2006-01-02T15:04:05.000Z07:00` requires
-  exactly three digits and prints `Z` only for a UTC time (so a missing `.UTC()`
-  fails loudly); `time.RFC3339Nano` MUST NOT be used — it drops trailing zeros.
+  Implementation: parsing is three checks in order — (1) the byte-exact A0-5.1
+  regex `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$` with the seconds group
+  additionally range-checked `00`–`59` (this is what forces `Z`, exactly three
+  digits, and rejects `:60`); (2) `time.Parse(TimeLayout, s)` for calendar
+  validity; (3) the year window `[MinYear, MaxYear)`. `time.Parse` alone MUST NOT
+  be used: `Z07:00` accepts numeric offsets and Go normalizes leap seconds. A
+  parsed value MUST round-trip: `FormatTime(ParseTime(s)) == s` byte-exactly,
+  else `validation`. `time.RFC3339Nano` MUST NOT be used — it drops trailing
+  zeros.
+  Tests: TestParseTimeRejects (table over the six rejection classes, incl. a
+  round-trip subtest).
 - **A0-5.4** Platform timestamps come from one injected clock (DESIGN §4, §8)
   as `time.Now().UTC().Truncate(time.Millisecond)`. The monotonic clock reading
   MUST be stripped before a timestamp is stored, hashed, or serialized
   (`Truncate` strips it). Durations MAY be measured with the monotonic clock
   but are serialized as integer `*_ms` fields (A0-8.2) — never as timestamps
   and never as Go duration strings.
+
+  `recorded_at` is platform-stamped and MUST be non-decreasing per chain: the
+  writer applies the forward clamp `max(clock_now, prev_recorded_at)`. **The
+  clamp MUST be bounded to 1000 ms**: beyond that the platform MUST use the true
+  clock reading, MUST log at error level with the engagement/run correlation
+  attributes (ADR-0019 §3), and `recorded_at` MAY then be non-monotone — A1-8.1's
+  rule that only `seq` orders anything is the compensating control. Any
+  client-claimed time (`*_claimed_at`) is clamped by the same bound so the two
+  never diverge by more than it.
+  Tests: TestRecordedAtClampIsMonotone, TestRecordedAtClampBypassRejected.
 - **A0-5.5** No local time zones anywhere: no offset other than `Z`, no
   time-zone name field, no per-user conversion in v1. UI rendering MUST display
   the zone explicitly (rendering choice belongs to the UI session).
@@ -341,7 +476,9 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   Ordering, chain verification (Q11), approval expiry (ADR-0012 §7) and
   single-use approval checks (Q10) MUST use platform-recorded timestamps only.
   v1 has **no external anchoring** — no NTP attestation, no timestamp
-  authority, no third-party anchor (Q11).
+  authority, no third-party anchor (Q11). The A0-5.4 forward clamp is bounded to
+  1000 ms, so `recorded_at` MAY be non-monotone past that bound and `seq` stays
+  the only ordering authority (A1-8.1).
 - **A0-5.7** A client-supplied timestamp is untrusted input: it MUST live in a
   field whose contract marks it as such (recommended suffix `_claimed_at`),
   MUST NOT drive ordering, expiry, or any digest, and MUST be stored next to
@@ -368,7 +505,14 @@ Both rules, side by side — neither generalizes to the other:
   dropped (`contracts/README.md` merge gate, Q13).
 - **A0-6.2** Writes: the platform decoding a client request MUST reject unknown
   fields with `validation`, naming the offending field
-  (`json.Decoder.DisallowUnknownFields`). _An LLM-driven client that
+  (`json.Decoder.DisallowUnknownFields`). Write-side key matching is byte-exact:
+  a key differing from the declared `json` tag only by case is an unknown field
+  and MUST be rejected with `validation` naming it. Because `encoding/json`
+  matches case-insensitively, the decoder MUST verify observed key spelling (the
+  same `Token()` walk A0-2.5 requires) rather than rely on
+  `DisallowUnknownFields` alone.
+  Tests: TestAppendRejectsUnknownField (incl. case variants),
+  TestCaseDuplicateKeyRejected. _An LLM-driven client that
   hallucinates a field name must fail loudly; a silently dropped
   safety-relevant field is exactly the drift ADR-0018 exists to prevent.
   Consequence: the platform is upgraded **before** agent images — a newer agent
@@ -402,20 +546,52 @@ Both rules, side by side — neither generalizes to the other:
 
 ### A0-7 · Size caps
 
-- **A0-7.1** The Q4 constants, verbatim — one table, one const block (§4). `KiB`
-  = 1024 bytes.
+- **A0-7.1** The one cap registry: the Q4 constants plus every per-contract cap
+  constant A1 and A2 declare — one table, one const block (§4). `KiB` = 1024
+  bytes. **One constant per value:** where two contracts capped the same thing
+  under different names or different numbers, the registry holds exactly one
+  name and one value (`ToolVersionMaxBytes = 64` — A2-7.1's 32 is a defect;
+  `EvidenceRefsMax = 8` replaces A2's `EvidenceIDsMax`), and both documents cite
+  the A0 name. An owning contract MUST NOT restate or shadow a registry value.
 
-  | Constant | Cap | Applies to | Source |
-  |---|---|---|---|
-  | `StageViewMaxBytes` | 65536 B (64 KiB) serialized JSON | one stage view document (A3) | Q4 |
-  | `StageViewMaxNodes` | 500 nodes | one stage view document (A3) | Q4 |
-  | `NodeSummaryMaxBytes` | 512 B | graph node summary field (A2) | Q4 |
-  | `FindingSummaryMaxBytes` | 2048 B (2 KiB) | `Finding` node summary (A2, Q2) | Q4 |
-  | `StageSummaryMaxBytes` | 2048 B (2 KiB) | per-stage summary in a view (A3) | Q4 |
+  | Constant | Cap | Applies to | Mechanism | Source |
+  |---|---|---|---|---|
+  | `StageViewMaxBytes` | 65536 B (64 KiB) serialized JSON | one stage view document (A3) | A3 assigns (A0-7.7) | Q4 |
+  | `StageViewMaxNodes` | 500 nodes | one stage view document (A3) | A3 assigns (A0-7.9) | Q4 |
+  | `NodeSummaryMaxBytes` | 512 B | graph node `summary` (A2) | **R** (A2-7.1) | Q4 |
+  | `FindingSummaryMaxBytes` | 2048 B (2 KiB) | `finding` node `summary` (A2, Q2) | **R** (A2-7.1) | Q4 |
+  | `StageSummaryMaxBytes` | 2048 B (2 KiB) | per-stage summary in a view (A3) | A3 assigns (A0-7.7) | Q4 |
+  | `EventMaxCanonicalBytes` | 32768 B | canonical bytes of one A1 event | platform invariant, not a client cap (A1-4.5) | A1 |
+  | `ProseLongMaxBytes` | 2048 B | A1 long untrusted prose: `command`, `task_description`, `result_summary`, `revert_action` | **R** (A1-4.5) | A1 |
+  | `ProseMediumMaxBytes` | 512 B | A1 medium prose: `reason`, `detail`, `action_summary`, `message`, `entry` | **R** (A1-4.5) | A1 |
+  | `TargetMaxBytes` | 256 B | A1 target text: `target`, `attempted_target`, `blacklist_entry` | **R** (A1-4.5) | A1 |
+  | `LabelMaxBytes` | 128 B | A1 platform/config labels: `origin`, `container_ref`, `network_name`, `media_type`, `model_name`, `endpoint_name`, `target_name`, `old_value`, `new_value` | **R** (A1-4.5) | A1 |
+  | `ToolVersionMaxBytes` | 64 B | `tool_version` (A1-4.5, A2-7.1) — one value for both | **R** | A1 + A2 |
+  | `KindNameMaxBytes` | 32 B | A1 `node_kind`, `edge_kind`, `risk_tier` (A2/A7 own the values) | **R** (A1-4.5) | A1 |
+  | `DigestMaxBytes` | 256 B | `image_digest` (A0-8.7) | **R** (A1-4.5) | A1 |
+  | `EvidenceRefsMax` | 8 | A1 `evidence_refs` count (A1-4.7) and A2 `evidence_ids` count — one value, A2's `EvidenceIDsMax` name is dropped | **R** | A1 + A2 |
+  | `EventRefsMax` | 64 | A1 `revert_event_ids` / `non_revertable_event_ids` count | **R** (A1-4.7) | A1 |
+  | `ExitCodeMin` / `ExitCodeMax` | -1 / 255 | A1 `exit_code` range (`-1` = no exit status) | reject → `validation` (A1-4.2) | A1 |
+  | `IdempotencyKeyMaxBytes` | 64 B | A1-7.6 client deduplication key | reject → `validation` (A1-7.6) | A1 |
+  | `NodeLabelMaxBytes` | 128 B | A2 node `label` | **R** (A2-7.1) | A2 |
+  | `HypothesisClaimMaxBytes` | 512 B | A2 `hypothesis.claim` | **R** (A2-7.1) | A2 |
+  | `HypothesisBasisMaxBytes` | 1024 B | A2 `hypothesis.basis` | **R** (A2-7.1) | A2 |
+  | `AttrValueMaxBytes` | 512 B | A2 `attrs` string value | **R** (A2-6.4) | A2 |
+  | `AttrsTotalMaxBytes` | 4096 B | A2 serialized `attrs` object | **R** (A2-6.4) | A2 |
+  | `AttrsMaxKeys` | 16 | A2 `attrs` key count | **R** (A2-6.4) | A2 |
+  | `AttrKeyMaxBytes` | 40 B | A2 `attrs` key length — the bound A0-8.1's `^[a-z][a-z0-9_]{0,39}$` already fixes; A2-6.2 declares no separate A2 constant | reject → `validation` (A2-6.2) | A0-8.1 |
+  | `AddressesMax` | 16 | A2 `addresses` count | **R** (A2-7.1) | A2 |
+  | `AddressMaxBytes` | 64 B | A2 `addresses` entry | **R** (A2-7.1) | A2 |
+  | `MaxSupersedeChain` | 64 | A2 `supersedes` history length (A2-4.4/4.5) | reject at write → `conflict` (A2-4.5) | A2 |
 
-- **A0-7.2** These values are contract constants: they MUST NOT change except
-  by a new ADR (Q4). Lowering a cap additionally requires a migration plan for
-  already-stored over-cap rows.
+  Tests: TestConstantsMatchA0Table (one assertion per registry row),
+  TestCapsRejectWithSummaryTooLarge.
+
+- **A0-7.2** These values — the Q4 constants and every adopted A1/A2 cap — are
+  contract constants: they MUST NOT change except by a new ADR (Q4). Lowering a
+  cap additionally requires a migration plan for already-stored over-cap rows.
+  An owning contract cites the A0-7.1 name; a second definition of the same
+  value anywhere in the platform is a defect.
 - **A0-7.3** Measurement: a **field** cap counts the UTF-8 bytes of the decoded
   string value (`len(s)` in Go) — surrounding quotes and escapes do not count.
   A **document** cap counts the UTF-8 bytes of the serialized JSON document as
@@ -428,19 +604,25 @@ Both rules, side by side — neither generalizes to the other:
 - **A0-7.5** **Mechanism T — truncate + marker.** The platform shortens the
   value so that `len(prefix) + len("[truncated]") ≤ cap`, appends the literal
   ASCII marker `[truncated]` (12 B, counted against the cap), and sets the
-  sibling boolean field `<field>_truncated` to `true`. The boolean is the
-  machine-readable signal; the marker is prose for humans and reports and MUST
-  NOT be parsed (A0-3.4). Used where a shortened value is still useful
-  (handover views, model context hygiene).
+  sibling boolean field `<field>_truncated` to `true`. A cap smaller than
+  `len(TruncationMarker)` is a platform defect: `caps.Truncate` returns
+  `("", true)` (§4) and the caller surfaces `internal` (A0-3.1) — an empty
+  value with the marker set is preferable to a value that silently exceeds its
+  cap. The boolean is the machine-readable signal; the marker is prose for
+  humans and reports and MUST NOT be parsed (A0-3.4). Used where a shortened
+  value is still useful (handover views, model context hygiene).
+  Tests: TestTruncateRuneBoundary, TestNoSilentTruncationInHashedRecords.
 - **A0-7.6** **Mechanism R — reject.** The platform refuses the write with
   `summary_too_large` (413), stores nothing, and the message names the field,
   the cap, and the actual byte count (ADR-0019 §2). Used where a silently
   shortened value would mislead an approver (ADR-0018 §1: operators approve the
   concrete action) or corrupt evidence (ADR-0016 §1: graph content is evidence).
-- **A0-7.7** A2 and A3 MUST assign exactly one mechanism to every capped field
-  class and record the assignment in their own contract. A0 defines the
-  mechanisms and assigns nothing. Recommended default: client-submitted
-  summaries → R; platform-computed view fields → T (**PO confirm**).
+- **A0-7.7** **A1, A2 and A3** — every contract with capped fields — MUST
+  assign exactly one mechanism to every capped field class and record the
+  assignment in their own contract. A0 defines the mechanisms and holds the
+  registry (A0-7.1); the mechanism a class gets stays the owning contract's
+  assignment. Recommended default: client-submitted summaries → R;
+  platform-computed view fields → T (**PO confirm**).
 - **A0-7.8** The enforcement point is the platform ingest/render path, never
   the producer (Q3: never trust worker discipline). A client-side pre-check MAY
   exist and is not enforcement.
@@ -455,21 +637,36 @@ Both rules, side by side — neither generalizes to the other:
   summaries only in the capped 1-hop drill-down of Q1). Escalated to the
   product owner (§6.14).
 
+  Interim composition rule for the Freeze (escalated, §6.14): where two A0-7.1 caps
+  apply to one composed document and cannot both hold, the **smaller** governs; the
+  builder MUST stop at the first cap it reaches, in its declared deterministic order
+  (A0-4.3), and set the truncation marker (mechanism T). A3 owns the composition rule
+  and MAY raise it only via ADR (A0-7.2).
+
 ### A0-8 · Field and enum conventions
 
 - **A0-8.1** JSON keys are `snake_case` ASCII matching `^[a-z][a-z0-9_]{0,39}$`;
   Go fields are MixedCaps with acronyms upper-case (`ID`, `URL`, `HTTP`, `TOTP`
   — DESIGN §9). Every contract field carries an explicit `json:"…"` tag; no key
-  is inferred from the Go identifier.
+  is inferred from the Go identifier. Key spelling on a write is byte-exact
+  (A0-6.2): a key that differs from the declared tag only by case is an unknown
+  field, not a match.
 - **A0-8.2** Suffixes are fixed and MUST NOT be used with another meaning:
-  `*_id` (identifier, A0-1) · `*_at` (timestamp, A0-5) · `*_ms` (duration in
-  milliseconds, integer) · `*_bytes` (byte count, integer) · `*_hash`
-  (lowercase hex digest, A0-2.15) · `*_truncated` (bool, A0-7.5) ·
-  `*_claimed_at` (untrusted client-supplied timestamp, A0-5.7).
+  `*_id` (identifier, A0-1) · `*_ids` (array of identifiers, sorted and
+  deduplicated per the owning contract) · `*_at` (timestamp, A0-5) · `*_ms`
+  (duration in milliseconds, integer) · `*_bytes` (byte count, integer) ·
+  `*_hash` (lowercase hex digest, A0-2.15) · `sha256` (artifact-integrity
+  digest, ADR-0009 §2) · `*_truncated` (bool, A0-7.5) ·
+  `*_claimed_at` (untrusted client-supplied timestamp, A0-5.7). `evidence_refs`
+  (A1-1.1) is the one approved exception to the suffix rule: it is an array of
+  `evi_` ids whose name does not end in `_ids`, and it cannot be renamed
+  because it is inside the digest (A0-2.14, A1-5.2).
 - **A0-8.3** Absent vs null: `null` MUST NOT appear in contract JSON in v1. An
   unset optional field is **absent**; an empty collection is `[]` or `{}`. A
   client MUST treat a received `null` as absent; the platform MUST reject a
-  `null` for a known field on a write with `validation`. Canonicalized types are
+  `null` for a known field on a write with `validation`. `cjson.Canonical` and
+  `cjson.CanonicalValue` reject a `null` at **any** depth, not only on known
+  fields (A0-2.14). Canonicalized types are
   stricter — fixed key set, zero values instead of absence (A0-2.14).
 - **A0-8.4** `""` is a value, not "unset": an optional string field is absent
   when unset (A0-8.3). _The two have different canonical bytes and therefore
@@ -486,22 +683,32 @@ Both rules, side by side — neither generalizes to the other:
   reject the standard alphabet (`+`/`/`) and MUST reject `=` padding. Used for
   cursors (A0-4.4) and opaque binary values. Evidence *files* are not JSON and
   are out of scope (ADR-0009).
+  Tests: TestCursorRejectsStandardAlphabetAndPadding, TestEncodeCursorRoundTrip.
 - **A0-8.7** Digests and MACs are lowercase hex (`encoding/hex`), 64 characters
-  for SHA-256 — never base64, never uppercase. _Greppable and eyeball-comparable
-  in logs, approval views and customer reports._
+  for SHA-256 — never base64, never uppercase. Container image digests are the
+  exception: `image_digest` carries the registry's `<algorithm>:<hex>` form,
+  validated as `^[a-z0-9]+(?:[._-][a-z0-9]+)*:[0-9a-f]{64}$` and capped by the
+  owning contract (A1-4.5: 256 B, `DigestMaxBytes`). _Greppable and
+  eyeball-comparable in logs, approval views and customer reports._
 - **A0-8.8** Booleans are JSON `true`/`false` named as adjectives or
   participles (`quarantined`, `truncated`) — no `is_` prefix in JSON.
 - **A0-8.9** All JSON bodies are `application/json; charset=utf-8`. Request
   bodies MUST be size-bounded before parsing (`http.MaxBytesReader`; A4 sets the
-  per-endpoint numbers) and MUST be UTF-8 (A0-2.3).
+  per-endpoint numbers) and MUST be UTF-8 (A0-2.3). The handler MUST call
+  `utf8.Valid` on the raw body before decoding and reject with `validation`;
+  `cjson.Canonical` MUST call `utf8.Valid(doc)` (A0-2.3). Relying on the decoder
+  is a defect.
 
 ## 4. Types
 
-Illustrative sketches — **not compiled** (`contracts/README.md`). They are the
-source of truth for field names and JSON shapes until the implementing package
-merges. A0 needs two new foundation packages (zero internal imports, DESIGN §1
-permits adding packages within the layer rules): `internal/ids` and
-`internal/cjson` (**PO confirm**, §6.13).
+A0 requires six foundation packages; none imports another internal package except
+`errs` (DESIGN §1 layering): `internal/ids` (A0-1), `internal/cjson` (A0-2),
+`internal/errs` (A0-3), `internal/paging` (A0-4: `Page`, `Cursor`, `EncodeCursor`,
+`DecodeCursor`), `internal/timex` (A0-5: `Clock`, `Now`, `FormatTime`, `ParseTime` —
+the name avoids shadowing stdlib `time`, the same reasoning DESIGN §1 gives for
+`logging`), `internal/caps` (A0-7: every cap constant of the A0-7.1 registry,
+`TruncationMarker`, `Truncate`, `Fits`). The sketches below are illustrative and not
+compiled (contracts/README.md §4); each carries its `package` line.
 
 ```go
 // internal/ids — foundation: identifier generation and validation (A0-1).
@@ -528,6 +735,7 @@ const (
 	Evidence   Kind = "evi_"
 	Approval   Kind = "apr_"
 	Tool       Kind = "tool_"
+	KindUser   Kind = "usr_" // human principal (SPEC §3, AM-1 — §6 item 15)
 )
 
 // New returns a fresh id of kind k. Errors only on entropy failure.
@@ -551,11 +759,23 @@ const (
 // integers only, literal UTF-8 strings, top-level object required, duplicate
 // and case-duplicate keys rejected, fields named in exclude dropped from the
 // top level (A0-2.12). Any violation returns an errs kind "validation".
-// Drives json.Decoder.Token() so every key is observed (A0-2.5).
+// Drives json.Decoder.Token() so every key is observed (A0-2.5), with
+// UseNumber() and each number's literal token text re-validated and re-emitted
+// verbatim (A0-2.5), Decoder.More() for trailing data (A0-2.3), its own nesting
+// counter (A0-2.11), utf8.Valid(doc) plus a lone-surrogate scan (A0-2.3), and a
+// rejection of null at any depth (A0-2.14).
 func Canonical(doc []byte, exclude ...string) ([]byte, error)
 
 // CanonicalValue marshals v with encoding/json and canonicalizes the result.
+// encoding/json only ever produces the intermediate bytes: Canonical re-parses
+// and re-emits them, so its U+2028/9 escaping and HTML escaping never reach the
+// final bytes (A0-2.7). Every slice and map field of v MUST be non-nil
+// (A0-2.14).
 func CanonicalValue(v any, exclude ...string) ([]byte, error)
+
+// With adds top-level fields to an already-canonical document and re-canonicalizes; it never
+// decodes into a typed struct. A key already present in doc is an error (A1-1.8, A1-5.7).
+func With(doc []byte, add map[string]any) ([]byte, error)
 
 // SHA256Hex returns the 64-char lowercase hex digest (A0-2.15).
 func SHA256Hex(b []byte) string
@@ -587,7 +807,8 @@ const (
 )
 
 // Envelope is the /api/v1 error body (A0-3.6). Absent attrs are omitted,
-// never null (A0-8.3). RetryAfterMS is present for rate_limited only.
+// never null (A0-8.3). RetryAfterMS is present for rate_limited only, and the
+// ≥ 1 floor of A0-3.10 is what makes omitempty safe for it.
 type Envelope struct {
 	Error ErrorBody `json:"error"`
 }
@@ -596,7 +817,7 @@ type ErrorBody struct {
 	Kind         Kind       `json:"kind"`
 	Message      string     `json:"message"`      // prose, never parsed (A0-3.4)
 	Attrs        Attrs      `json:"attrs"`
-	RetryAfterMS int64      `json:"retry_after_ms,omitempty"`
+	RetryAfterMS int64      `json:"retry_after_ms,omitempty"` // ≥ 1 whenever present (A0-3.10)
 }
 
 // Attrs are the ADR-0019 §3 correlation ids. NodeID is the remote agent node
@@ -644,6 +865,9 @@ func (k Kind) Status() int
 ```
 
 ```go
+// internal/paging — foundation: the one list envelope and its cursors (A0-4).
+package paging
+
 // Page is the one list envelope (A0-4.1). NextCursor absent = exhausted.
 type Page[T any] struct {
 	Items      []T    `json:"items"`
@@ -656,8 +880,11 @@ type Cursor struct {
 	ID string `json:"id"` // id of the last returned row (A0-1)
 }
 
-func EncodeCursor(c Cursor) (string, error)   // cjson.CanonicalValue + RawURLEncoding
-func DecodeCursor(s string) (Cursor, error)   // validation on any deviation (A0-4.8)
+func EncodeCursor(c Cursor) (string, error) // cjson.CanonicalValue + RawURLEncoding
+
+// DecodeCursor validates the decoded cursor and validates its id against k's
+// regex (A0-1.5); any deviation is errs.Validation (A0-4.8).
+func DecodeCursor(s string, k ids.Kind) (Cursor, error)
 ```
 
 ```json
@@ -674,6 +901,10 @@ func DecodeCursor(s string) (Cursor, error)   // validation on any deviation (A0
 ```
 
 ```go
+// internal/timex — foundation: the one layout, clock and precision (A0-5).
+// The name avoids shadowing stdlib `time` (same reasoning as `logging`).
+package timex
+
 // Time (A0-5). One layout, one clock, one precision.
 const (
 	TimeLayout = "2006-01-02T15:04:05.000Z07:00" // A0-5.1; prints Z only for UTC
@@ -688,25 +919,102 @@ func Now(c Clock) time.Time { return c.Now().UTC().Truncate(time.Millisecond) }
 
 func FormatTime(t time.Time) string          // A0-5.1
 func ParseTime(s string) (time.Time, error)  // A0-5.3: reject, never normalize
+```
 
-// Size caps (A0-7.1) — Q4 contract constants, changeable only via ADR (A0-7.2).
+```go
+// internal/caps — foundation: the A0-7.1 registry, mechanism T and mechanism R.
+package caps
+
+// Size caps (A0-7.1) — the one registry: Q4 contract constants plus every
+// per-contract cap A1 and A2 declare. Changeable only via ADR (A0-7.2); an
+// owning contract cites these names and never restates a value.
 const (
+	// Q4 (A0-7.1).
 	StageViewMaxBytes      = 64 * 1024 // 65536 B serialized JSON
 	StageViewMaxNodes      = 500       // count, not bytes (A0-7.9)
 	NodeSummaryMaxBytes    = 512       // B, UTF-8 of the decoded value
 	FindingSummaryMaxBytes = 2 * 1024  // 2048 B
 	StageSummaryMaxBytes   = 2 * 1024  // 2048 B
+
+	// A1 (A1-4.5/4.7) — mechanism R everywhere.
+	EventMaxCanonicalBytes = 32768 // platform invariant on one canonical event
+	ProseLongMaxBytes      = 2048  // command, task_description, result_summary, revert_action
+	ProseMediumMaxBytes    = 512   // reason, detail, action_summary, message, entry
+	TargetMaxBytes         = 256   // target, attempted_target, blacklist_entry
+	LabelMaxBytes          = 128   // origin, container_ref, network_name, media_type, ...
+	ToolVersionMaxBytes    = 64    // tool_version; one value for A1 and A2 (A2's 32 is a defect)
+	KindNameMaxBytes       = 32    // node_kind, edge_kind, risk_tier (A2/A7 own the values)
+	DigestMaxBytes         = 256   // image_digest (A0-8.7)
+	EvidenceRefsMax        = 8     // A1 evidence_refs / A2 evidence_ids count (was EvidenceIDsMax)
+	EventRefsMax           = 64    // revert_event_ids / non_revertable_event_ids count
+	ExitCodeMin            = -1    // -1 = no exit status (A1-4.2)
+	ExitCodeMax            = 255
+	IdempotencyKeyMaxBytes = 64 // A1-7.6 client dedup key
+
+	// A2 (A2-6.4/7.1) — mechanism R everywhere.
+	NodeLabelMaxBytes       = 128
+	HypothesisClaimMaxBytes = 512
+	HypothesisBasisMaxBytes = 1024
+	AttrValueMaxBytes       = 512
+	AttrsTotalMaxBytes      = 4096
+	AttrsMaxKeys            = 16
+	AttrKeyMaxBytes         = 40 // = A0-8.1's key regex bound (A2-6.2)
+	AddressesMax            = 16
+	AddressMaxBytes         = 64
+	MaxSupersedeChain       = 64 // A2-4.4/4.5: bound on one history walk
 )
 
 const TruncationMarker = "[truncated]" // A0-7.5, 12 B, counted against the cap
 
 // Truncate applies mechanism T: rune-boundary cut + marker (A0-7.4/7.5).
 // Reports whether anything was cut, for the sibling <field>_truncated bool.
-func Truncate(s string, cap int) (out string, truncated bool)
+// `limit` (not `cap`, which shadows the builtin) < len(TruncationMarker) is a
+// platform defect: Truncate returns ("", true) and the caller surfaces
+// errs.Internal (A0-7.5).
+func Truncate(s string, limit int) (out string, truncated bool)
 
 // Fits applies the measurement rule of A0-7.3 before mechanism R (A0-7.6).
 func Fits(s string, cap int) bool
 ```
+
+### 4.1 Contract tests (A0)
+
+The shared contract-test suite (`contracts/README.md`) MUST implement these ids
+for A0; the name is the identifier, one name per test, and the clause named is
+the rule the test guards. A0-2.17's vectors are data, not a test id: the suite
+asserts their canonical bytes, lengths and digests byte-exactly.
+
+| Clause | Test ids |
+|---|---|
+| A0-1.4 | `TestIDGenerationUsesCryptoRand`, `TestUniquenessViolationIsInternal` |
+| A0-1.5 | `TestValidRejectsNormalization`, `TestValidIsByteExact` |
+| A0-1.9 | `TestIDOrderingMatchesByteOrderCollateC` (integration, opt-in per DESIGN §8) |
+| A0-2.3 | `TestInvalidUTF8Rejected`, `TestLoneSurrogateRejected` |
+| A0-2.5 | `TestDuplicateKeyRejected`, `TestCaseDuplicateKeyRejected`, `TestCanonicalEmitsNumberLiteralText`, `TestRejections` |
+| A0-2.11 | `TestDepthLimit`, `TestSizeLimit` |
+| A0-2.14 | `TestNilCollectionNeverSerializesAsNull` |
+| A0-2.15 | `TestDigestEqual`, `TestGatingComparisonsAreConstantTime` |
+| A0-3.4 | `TestSecretScanNamesFieldNotValue`, `TestNoSecretValueOrDigestInError` |
+| A0-3.10 | `TestRetryAfterPresence`, `TestRetryAfterAgreement` |
+| A0-4.4 | `TestDecodeCursorRejects`, `TestCursorWithInconsistentKAndIDRejected` |
+| A0-4.5 | `TestLimitValidation`, `TestLimitAboveMaxRejectedNotClamped` |
+| A0-4.6 | `TestHasMoreDetection` |
+| A0-5.3 | `TestParseTimeRejects` (incl. a round-trip subtest) |
+| A0-5.4 | `TestRecordedAtClampIsMonotone`, `TestRecordedAtClampBypassRejected` |
+| A0-6.2 | `TestAppendRejectsUnknownField` (incl. case variants) |
+| A0-7.1 | `TestConstantsMatchA0Table` (one assertion per registry row) |
+| A0-7.4 / A0-7.5 | `TestTruncateRuneBoundary`, `TestNoSilentTruncationInHashedRecords` |
+| A0-8.6 | `TestCursorRejectsStandardAlphabetAndPadding` |
+| §4 `cjson.With` | `TestWithAddsKeys`, `TestWithRejectsExistingKey` |
+
+Naming rulings carried by this table: `TestExactFullPageHasNoNextCursor` is the
+same test as `TestHasMoreDetection` and is **not** a second id; the round-trip
+check of A0-5.3 is a subtest of `TestParseTimeRejects`, not `TestTimeParse…`.
+`TestCursorWithInconsistentKAndIDRejected` has exactly one oracle across A0, A1
+and A2: `validation` (400), never "empty page or `validation`" (A0-4.4, A0-4.8).
+The positive counterparts of the canonicalization rules are the A0-2.17 accept
+vectors (V1–V8, the 32-deep document, the surrogate-pair string); the negative
+counterparts are its rejection entries.
 
 ## 5. Traceability
 
@@ -768,6 +1076,16 @@ decided silently.
     recommendation that A3 transmit stage views in canonical form.
 14. **A0-7.10 — needs a decision, not a confirmation.** The Q4 caps cannot all
     be satisfied by a maximal stage view (500 × 512 B ≈ 250 KiB > 64 KiB;
-    ~131 B per node). A3 needs a composition rule. Recommendation: the view
-    carries compact node references (id, kind, one-line label) and full
-    summaries appear only in the capped 1-hop drill-down (Q1).
+    ~131 B per node). A3 needs a composition rule. **Interim rule applied for the
+    Freeze (BLOCK-PO2, A0-7.10):** where two A0-7.1 caps cannot both hold for one
+    composed document, the smaller governs and the builder truncates with mechanism
+    T. The product owner MUST confirm this fail-safe default or replace it with A3's
+    composition rule before A3 is drafted; ~131 B per node is not a usable view
+    budget.
+15. **AM-1 — resolved by default for the Freeze (PO confirm):** A0-1.2 registers
+    the human-principal prefix `usr_` (`^usr_B{26}$`, 30 B) and A0 §4 adds
+    `KindUser`. A0 owns id *shapes*; delegating the spelling to A5 would split
+    A0-1.5 validation across two contracts. Every user-composed A1 kind
+    (`actor.principal_id`, A1-2.2) and every A2 operator write (`user_id`,
+    A2-5.3) validates against it. The product owner MUST confirm the prefix
+    spelling before Frozen; it is additive-only afterwards (A0-1.10).
