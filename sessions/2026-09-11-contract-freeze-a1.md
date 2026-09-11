@@ -25,6 +25,30 @@
   stub**, not only A1-5…A1-8. Real A1 content = A1-1…A1-3 (347 lines).
 - Missing artifact noted: `sessions/style-notes.md` (em/en dash + quote rules)
   is referenced by the quota snapshot but does not exist in the repo.
+- **A1 completed** (architect child, this run): `contracts/A1-events.md`
+  347 → 2469 lines. Wrote A1-4 (payload rules, 12 clauses), A1-5 (hash chain,
+  10), A1-6 (verification + failure behaviour, 9), A1-7 (write path, 12), A1-8
+  (read/stream guarantees, 9), §4 types (Go sketch + JSON examples + a
+  **normative 3-event chain vector** whose SHA-256s were computed and are
+  reproducible from the document bytes), §5 traceability, §6 (14 PO items +
+  AM-1..AM-4 + cross-contract requests).
+- Additive A1-3 changes for A2 (A0-6.5): kinds `quarantine_recomputed`
+  (A2-8.5) and `graph_edge_retracted` (A2-3.9) → 37 → **39 kinds**;
+  enum values `chain_break_detected.break_kind: engagement_mismatch` (A12
+  splicing) and `action_blocked.reason: append_rejected`; new clause **A1-3.8**
+  answers every A2 cross-contract request (confirmed / corrected / added),
+  incl. **no** `node_superseded` kind (one fact, one encoding).
+- A0 obligations discharged in A1: A0-2.12/2.13 (A1-5.2, A1-5.10), A0-2.14
+  (A1-4.1), A0-2.16 (A1-5.7), A0-3.11 (A1-7.6/7.7), A0-4.3 (A1-8.1/8.2),
+  A0-5.6 (A1-5.4, A1-6.1), A0-5.7 (A1-4.12, A1-7.3), A0-6.6 (A1-4.10),
+  A0-7.7 (A1-4.5: mechanism **R** for every A1 class, T for none).
+- A0 amendment requests raised by A1: AM-1 `usr_` (freeze blocker, same as A2
+  AM-1) · AM-2 extend A0-7.7 to A1 + adopt the A1-local cap constants ·
+  AM-3 record the `recorded_at` forward clamp in A0-5.4 · AM-4 add
+  "cursor id not in this collection" to A0-4.8's `validation` cases.
+- Minor consistency edits inside A1-1..A1-3 (all listed in the run report):
+  header package name `internal/event` → `internal/events` (DESIGN §1) and the
+  additive A1-3 changes above. No A1-1/A1-2 clause text changed.
 - (append as work happens)
 
 ## Decisions
@@ -47,6 +71,6 @@
 
 | total input | uncached input | cache read | cache write | output | reasoning |
 |---|---|---|---|---|---|
-| 320308 | 45236 | 275072 | 0 | 8359 | 4371 |
+| 12087529 | 283113 | 11804416 | 0 | 144134 | 64146 |
 
 _(run `sessions/update-usage.sh sessions/2026-09-11-contract-freeze-a1.md` at session end)_
