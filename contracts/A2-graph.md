@@ -20,7 +20,8 @@ rule (`supersedes`) and how a client resolves the current revision; mandatory
 platform-stamped provenance; the bounded flat `attrs` escape hatch; the
 quarantine state and report exclusion; the no-secret-values rule; write
 validation semantics and error kinds; engagement binding (C8) and its
-negative tests; the exact shapes A3 may assume.
+negative tests; the exact shapes A3 may assume; the normative content
+fingerprint vector (§4.2) and the A2 contract-test ids (§4.3).
 
 **Not fixed here:** stage-view composition, the per-stage view definitions and
 the capped 1-hop drill-down (A3; Q1) · the A0-7.10 composition rule for
@@ -70,8 +71,9 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   appear — A0-3.6 reserves `node_id` for the **remote agent node**
   (`slp_node_`). Graph-node references are `source_id`, `target_id`,
   `supersedes_id`, `superseded_by_id`; the agent node is `agent_node_id`; and
-  error/log attributes use `graph_node_id` for a graph node (A0-3.6). §6.3 asks
-  A0 to bless the payload spellings.
+  error/log attributes use `graph_node_id` for a graph node (A0-3.6). AM-3
+  asked A0 to bless the payload spellings: the reservation is granted, the
+  blessing is not, and the table below is the published mapping instead.
 
   One value, one name platform-wide (A0-3.6): a graph node is `graph_node_id` and a
   graph edge is `graph_edge_id` in every JSON document, payload, error body and log
@@ -582,6 +584,7 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   `quarantine_recomputed{scope_changed}` plus the per-node recomputation, stored as
   `quarantined:false` with `quarantine_reason` absent. The stored reason MUST be
   derived by the platform from this mapping, never copied from an event string.
+  (**PO confirm**, §6 item 14 — byte-identical to A1 §6's ruling.)
 
   An admin or the assigned operator MAY **tighten** quarantine (`SetQuarantine`
   with `quarantined:true`, preserving the reason in force) and MUST be
@@ -830,7 +833,9 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   non-current node, supersede cycle → `conflict` (409) · endpoint or
   `event_id` that does not resolve in this engagement → `notfound` (404,
   A0-3.9) · store uniqueness race or missing platform provenance → `internal`
-  (500, A0-1.4).
+  (500, A0-1.4). `Tests: TestHardRejectMatrix` — one subtest per rejection
+  class of §4.3, so this table is exhaustively asserted and a new rejection
+  class needs a new subtest.
 - **A2-10.4** Every `validation` message is self-contained and greppable per
   ADR-0019 §2 / A0-3.4:
   `component.Function: what was attempted: key identifiers: cause`, naming the
@@ -907,6 +912,17 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   - `TestNoBulkReadSpansEngagements` — reflection/endpoint audit over the A4
     route table and the store seam: no graph read accepts more than one
     engagement id or omits it.
+  - `TestNodeDedupDoesNotSpanEngagements` — A2-4.7's collapse key is
+    `(engagement_id, kind, content_hash)`: a node written in A whose content
+    is byte-identical to one in B creates a **new** `gn_` in B, and neither
+    engagement's `content_hash` is ever looked up in the other's rows.
+  - `TestEdgeDedupDoesNotSpanEngagements` — the same for A2-3.5's edge key
+    `(engagement_id, kind, source_id, target_id)`: no collapse across
+    engagements, and no `ge_` id from A is ever returned by a B-scoped write.
+  - `TestNoBareNodeIDInGraphDocuments` — no graph request, response, error
+    body or log attribute contains a bare `node_id` key for a graph node
+    (A2-1.6, A0-3.6); the only `node_id` in the platform is the remote agent
+    node (`slp_node_`, Q9), spelled `agent_node_id` in A2 (A2-5.3).
 - **A2-11.5** `engagement_id` on a stored record is immutable (A2-1.3). There
   is no re-parenting, no export-to-another-engagement and no copy operation in
   v1; a future one is an ADR (ADR-0016 §3).
@@ -1275,15 +1291,17 @@ func SetEdgeRetracted(ctx context.Context, engagementID, edgeID string, retracte
 
 ### 4.1 JSON examples
 
-A `finding` node with full provenance (A2-2.3, A2-5.3). `quarantined` and
-`report_excluded` are present and `false`; unset optional fields are absent
-(A0-8.3).
+A `finding` node with a two-entry provenance list (A2-2.3, A2-5.1, A2-5.3).
+`quarantined` and `report_excluded` are present and `false`; unset optional
+fields are absent (A0-8.3). `provenance` is an **array** ordered by the A1
+event `seq` of its entries (A2-4.7), never by arrival. Its `content_hash` is
+§4.2 vector **F1**.
 
 ```json
 {
-  "id": "gn_01m1y2whfhh039ykj5x8mc5a0g",
+  "graph_node_id": "gn_01m1y2whfhh039ykj5x8mc5a0g",
   "engagement_id": "eng_01m1y2whfhgbz06ays6dxnvyws",
-  "seq": 412,
+  "graph_seq": 412,
   "kind": "finding",
   "label": "SMB relay to SYSVOL on dc01",
   "summary": "Captured NTLM authentication from 10.20.0.14 was relayed to the SYSVOL share on dc01, yielding read access to group policy preferences. Secret material is referenced, not stored (evi_).",
@@ -1298,24 +1316,45 @@ A `finding` node with full provenance (A2-2.3, A2-5.3). `quarantined` and
   },
   "severity": "high",
   "status": "confirmed",
-  "content_hash": "7f3c1a92de48b06f5ac7d1e8b93042fa6c5d7e81b2a39f04c6d81e5b7a290c34",
+  "content_hash": "ad8f188e63b2563f9adad88df585d94df9c662e4082895e974b0b31e8a65076e",
   "quarantined": false,
   "report_excluded": false,
-  "provenance": {
-    "principal_kind": "worker",
-    "run_id": "run_01m1y2whfhnjx2am9103w0pnqw",
-    "job_id": "job_01m1y2whfhbt69j0h0fbxepw90",
-    "task_id": "task_01m1y2whfh1txm57x8dn41r9hg",
-    "agent_node_id": "slp_node_01m1y2whfhxydsaem68cmazyc8",
-    "tool_id": "tool_01m1y2whfhfjdvwqp9pfxqekmf",
-    "tool_version": "1.4.2",
-    "event_id": "evt_01m1y2whfhp17g0avdqztd2p3x",
-    "recorded_at": "2026-09-07T14:03:22.481Z",
-    "observed_claimed_at": "2026-09-07T14:03:19.900Z",
-    "confidence": "verified"
-  }
+  "provenance": [
+    {
+      "principal_kind": "worker",
+      "run_id": "run_01m1y2whfhnjx2am9103w0pnqw",
+      "job_id": "job_01m1y2whfhbt69j0h0fbxepw90",
+      "task_id": "task_01m1y2whfh1txm57x8dn41r9hg",
+      "agent_node_id": "slp_node_01m1y2whfhxydsaem68cmazyc8",
+      "tool_id": "tool_01m1y2whfhfjdvwqp9pfxqekmf",
+      "tool_version": "1.4.2",
+      "event_id": "evt_01m1y2whfhp17g0avdqztd2p3x",
+      "recorded_at": "2026-09-07T14:03:22.481Z",
+      "observed_claimed_at": "2026-09-07T14:03:19.900Z",
+      "confidence": "observed"
+    },
+    {
+      "principal_kind": "worker",
+      "run_id": "run_01m1y2whfhnjx2am9103w0pnqw",
+      "job_id": "job_01m1y2whfhvk83rt5x1z7c4m2b",
+      "task_id": "task_01m1y2whfh4kd8nq2z7x1vb3rt",
+      "agent_node_id": "slp_node_01m1y2whfhq3vb8nrt5x1z7c4m",
+      "tool_id": "tool_01m1y2whfhfjdvwqp9pfxqekmf",
+      "tool_version": "1.4.2",
+      "event_id": "evt_01m1y2whfhr8t2nb5x9qz4vb7m",
+      "recorded_at": "2026-09-07T14:07:55.140Z",
+      "observed_claimed_at": "2026-09-07T14:07:52.880Z",
+      "confidence": "verified"
+    }
+  ]
 }
 ```
+
+_Two entries, two different `task_id`/`agent_node_id` values: the second is the
+independent observation that raises the node's grade to `verified` (A2-4.7,
+A2-5.6). A single-entry node can never show `verified` — the remaining
+examples below each carry one entry and therefore show `observed` or
+`inferred`._
 
 A `supersedes` revision pair (A2-4): the old hypothesis is unchanged and
 gains only `superseded_by_id`; the new one carries `supersedes_id`. Both stay
@@ -1325,54 +1364,58 @@ in the graph, both keep their own provenance and `content_hash`.
 {
   "items": [
     {
-      "id": "gn_01m1y2whfh9x2b4c7d1e8f0a3b",
+      "graph_node_id": "gn_01m1y2whfh9x2b4c7d1e8f0a3b",
       "engagement_id": "eng_01m1y2whfhgbz06ays6dxnvyws",
-      "seq": 388,
+      "graph_seq": 388,
       "kind": "hypothesis",
       "label": "dc01 accepts NTLM relay from the VPN range",
       "claim": "NTLM authentication from 10.20.0.0/24 can be relayed to SMB on dc01 because signing is not enforced.",
       "basis": "Port 445 reachable (evt_01m1y2whfhc2v9nq4x7z1m8b3p) and no SMB signing requirement observed in one negotiation.",
       "status": "supported",
       "attrs": { "negotiations_seen": 1 },
-      "content_hash": "1c0f8ab73e5d9246b0a17fe4c8d2593ba6e0147d92c85b3f10ae6d47c8b92015",
+      "content_hash": "89af62666566f98a406f79541497b1a3d7116646edbb0fafe83e239dea1425d4",
       "quarantined": false,
       "report_excluded": false,
       "superseded_by_id": "gn_01m1y2whfjk5t8nq2z7x1vb3rt",
-      "provenance": {
-        "principal_kind": "orchestrator",
-        "run_id": "run_01m1y2whfhnjx2am9103w0pnqw",
-        "job_id": "job_01m1y2whfhbt69j0h0fbxepw90",
-        "event_id": "evt_01m1y2whfhd8k3m9qz1x7vb4nr",
-        "recorded_at": "2026-09-07T13:41:07.220Z",
-        "confidence": "inferred"
-      }
+      "provenance": [
+        {
+          "principal_kind": "orchestrator",
+          "run_id": "run_01m1y2whfhnjx2am9103w0pnqw",
+          "job_id": "job_01m1y2whfhbt69j0h0fbxepw90",
+          "event_id": "evt_01m1y2whfhd8k3m9qz1x7vb4nr",
+          "recorded_at": "2026-09-07T13:41:07.220Z",
+          "confidence": "inferred"
+        }
+      ]
     },
     {
-      "id": "gn_01m1y2whfjk5t8nq2z7x1vb3rt",
+      "graph_node_id": "gn_01m1y2whfjk5t8nq2z7x1vb3rt",
       "engagement_id": "eng_01m1y2whfhgbz06ays6dxnvyws",
-      "seq": 405,
+      "graph_seq": 405,
       "kind": "hypothesis",
       "label": "dc01 accepts NTLM relay from the VPN range",
       "claim": "NTLM relay from 10.20.0.0/24 to SMB on dc01 succeeds and reaches SYSVOL; three independent negotiations reproduced it.",
       "basis": "Reproduced by task_01m1y2whfh1txm57x8dn41r9hg against dc01 and by a second run against the file server; signing absent in all three negotiations.",
       "status": "supported",
       "attrs": { "negotiations_seen": 3 },
-      "content_hash": "9ab41f0c7d2e8356b1a04ce7f8d2953ba6e1047d82c95b4f20ae7d57c9b83125",
+      "content_hash": "1c3c351c6f194a2c3f5217df33016e92b133fc2f035b4a310c8c64decfaf560d",
       "quarantined": false,
       "report_excluded": false,
       "supersedes_id": "gn_01m1y2whfh9x2b4c7d1e8f0a3b",
-      "provenance": {
-        "principal_kind": "worker",
-        "run_id": "run_01m1y2whfhnjx2am9103w0pnqw",
-        "job_id": "job_01m1y2whfhbt69j0h0fbxepw90",
-        "task_id": "task_01m1y2whfh1txm57x8dn41r9hg",
-        "tool_id": "tool_01m1y2whfhfjdvwqp9pfxqekmf",
-        "tool_version": "1.4.2",
-        "event_id": "evt_01m1y2whfhm6p3kq9z2x1vb4rt",
-        "recorded_at": "2026-09-07T13:58:41.330Z",
-        "observed_claimed_at": "2026-09-07T13:58:39.100Z",
-        "confidence": "verified"
-      }
+      "provenance": [
+        {
+          "principal_kind": "worker",
+          "run_id": "run_01m1y2whfhnjx2am9103w0pnqw",
+          "job_id": "job_01m1y2whfhbt69j0h0fbxepw90",
+          "task_id": "task_01m1y2whfh1txm57x8dn41r9hg",
+          "tool_id": "tool_01m1y2whfhfjdvwqp9pfxqekmf",
+          "tool_version": "1.4.2",
+          "event_id": "evt_01m1y2whfhm6p3kq9z2x1vb4rt",
+          "recorded_at": "2026-09-07T13:58:41.330Z",
+          "observed_claimed_at": "2026-09-07T13:58:39.100Z",
+          "confidence": "inferred"
+        }
+      ]
     }
   ]
 }
@@ -1381,57 +1424,78 @@ in the graph, both keep their own provenance and `content_hash`.
 _The pair above is a hypothesis revised by a better-supported hypothesis
 (same `kind`, A2-4.3); a confirmed exploitation is written as a `finding`
 (first example) and attached to its target by the `exploited_by` edge below._
+_The current hypothesis stays `inferred` although its `basis` prose claims
+three reproductions: one provenance entry is one observation, and `verified`
+is stored only through A2-4.7's independence rule. Both `content_hash` values
+are computed from each node's own A2-4.6 `contentDoc` (illustrative — they are
+not §4.2 vectors); they differ, which is what keeps the revision from
+collapsing into the superseded node (A2-4.7)._
 
 A quarantined out-of-scope host (A2-8), and the edge that attaches a finding
 to its target (A2-3.2):
 
 ```json
 {
-  "id": "gn_01m1y2whfhq7z3m9x1c4vb8nrt",
+  "graph_node_id": "gn_01m1y2whfhq7z3m9x1c4vb8nrt",
   "engagement_id": "eng_01m1y2whfhgbz06ays6dxnvyws",
-  "seq": 431,
+  "graph_seq": 431,
   "kind": "host",
   "label": "payroll.corp.acme.com",
   "addresses": ["10.99.4.20"],
   "summary": "Seen in DNS response for an in-scope resolver. Outside the engagement allowlist and inside the global blacklist range 10.99.0.0/16: recorded, never tested.",
   "attrs": { "seen_via": "dns_zone_transfer_partial" },
-  "content_hash": "4e7b0c93da18f2650be17ca4d83f952ba0e6174d89c25b7f31ae0d47c2b85913",
+  "content_hash": "e6dedac2032b119d837105f6271e233686264bd2ea7b35f50b3bd8d9a1164148",
   "quarantined": true,
   "quarantine_reason": "blacklisted",
   "report_excluded": false,
-  "provenance": {
-    "principal_kind": "platform",
-    "run_id": "run_01m1y2whfhnjx2am9103w0pnqw",
-    "job_id": "job_01m1y2whfhbt69j0h0fbxepw90",
-    "event_id": "evt_01m1y2whfhk4m2nq8x7z1vb3rt",
-    "recorded_at": "2026-09-07T14:11:52.007Z",
-    "observed_claimed_at": "2026-09-07T14:11:48.310Z",
-    "confidence": "observed"
-  }
+  "provenance": [
+    {
+      "principal_kind": "platform",
+      "run_id": "run_01m1y2whfhnjx2am9103w0pnqw",
+      "job_id": "job_01m1y2whfhbt69j0h0fbxepw90",
+      "event_id": "evt_01m1y2whfhk4m2nq8x7z1vb3rt",
+      "recorded_at": "2026-09-07T14:11:52.007Z",
+      "observed_claimed_at": "2026-09-07T14:11:48.310Z",
+      "confidence": "observed"
+    }
+  ]
 }
 ```
 
+_`quarantined` and `quarantine_reason` are not part of `contentDoc` (A2-4.6's
+exclusion list): the host's `content_hash` is
+`e6dedac2032b119d837105f6271e233686264bd2ea7b35f50b3bd8d9a1164148`
+(illustrative — not a §4.2 vector), and flipping the flag later never changes
+it. A blacklisted discovery is **recorded, not refused** (A2-8.5, §6 item 12)._
+
 ```json
 {
-  "id": "ge_01m1y2whfh62ej11jf4x5gjzv4",
+  "graph_edge_id": "ge_01m1y2whfh62ej11jf4x5gjzv4",
   "engagement_id": "eng_01m1y2whfhgbz06ays6dxnvyws",
-  "seq": 413,
+  "graph_seq": 413,
   "kind": "exploited_by",
   "source_id": "gn_01m1y2whfhdc01srv4x8mc5a0g",
   "source_kind": "host",
   "target_id": "gn_01m1y2whfhh039ykj5x8mc5a0g",
   "target_kind": "finding",
   "retracted": false,
-  "provenance": {
-    "principal_kind": "platform",
-    "run_id": "run_01m1y2whfhnjx2am9103w0pnqw",
-    "job_id": "job_01m1y2whfhbt69j0h0fbxepw90",
-    "event_id": "evt_01m1y2whfhp17g0avdqztd2p3x",
-    "recorded_at": "2026-09-07T14:03:22.502Z",
-    "confidence": "verified"
-  }
+  "provenance": [
+    {
+      "principal_kind": "platform",
+      "run_id": "run_01m1y2whfhnjx2am9103w0pnqw",
+      "job_id": "job_01m1y2whfhbt69j0h0fbxepw90",
+      "event_id": "evt_01m1y2whfhp17g0avdqztd2p3x",
+      "recorded_at": "2026-09-07T14:03:22.502Z",
+      "confidence": "inferred"
+    }
+  ]
 }
 ```
+
+_An edge carries no `content_hash` (A2-4.6 fingerprints nodes only; the edge
+dedup key is A2-3.5's `(engagement_id, kind, source_id, target_id)`), and its
+single provenance entry is `inferred`: the platform composed the edge from the
+finding's own evidence (A2-5.6)._
 
 A hard-rejected write (Q3, A2-10.3/10.4): a cap violation is
 `summary_too_large` (A0-7.6), everything else `validation`. Note
@@ -1452,12 +1516,138 @@ A hard-rejected write (Q3, A2-10.3/10.4): a cap violation is
 }
 ```
 
+### 4.2 Normative content fingerprint vector
+
+Normative, like A0-2.17 and A1 §4.3: the shared contract-test suite MUST
+reproduce these bytes and digests byte-exactly. Each row is one node's A2-4.6
+`contentDoc` — the fixed 20-key set, zero values for the keys that do not
+apply to the kind (A0-2.14), `addresses`/`evidence_ids` sorted ascending by
+unsigned byte value and deduplicated **before** canonicalization (A2-4.6),
+keys in UTF-8 byte order (A0-2.4) — and its SHA-256 (A0-2.15) is that node's
+`content_hash`. A `content_hash` computed over unsorted arrays (F1-R's
+forbidden digest below) is a **defect**, not a variant.
+
+| row | node | len | SHA-256 |
+|---|---|---|---|
+| **F1** | the §4.1 `finding` example | **656** | `ad8f188e63b2563f9adad88df585d94df9c662e4082895e974b0b31e8a65076e` |
+| **F1-R** | the same node with `evidence_ids` **given** in the reverse order | 656 | `ad8f188e…076e` — identical bytes and identical digest to F1 |
+| **F3** | F1 with `attrs.cvss_v3_x10` = 87 (one `attrs` value differs) | **656** | `1748b813a0d28d9f17f4d89dff2a08536741bf45e8fe0defbb3c4363d3f9b983` |
+| **S1** | a `service` node, inapplicable keys at their zero values | **304** | `3955d82160284d3e76c9be1b06981530df50e1635a1bad7ceb7b50c5f73c2b67` |
+
+F1-R's **forbidden** variant: canonicalizing the same content without A2-4.6's
+sort/dedup yields
+`4a017e71658de7ebb2d3a5429f90818b8a69302ff1909badbc782d9049ce9cae`. That
+digest is published as the **defective-implementation marker** — an
+implementation that produces it for this input fails
+`TestContentHashStableAcrossArrayOrder` and MUST NOT ship.
+
+None of the four canonical byte strings contains an invisible code point (all
+are pure ASCII, so no `<2028>`/`<2029>`/`<7F>` placeholder form is needed
+here); the **len** and **SHA-256** columns are the authority, and a byte string
+below that disagrees with them is a transcription defect.
+
+```
+F1 and F1-R canonical bytes (656 B, byte-identical for both rows):
+{"addresses":[],"attrs":{"cvss_v3_x10":88,"first_seen_task":"task_01m1y2whfh1txm57x8dn41r9hg","relay_tool":"ntlmrelayx"},"basis":"","cidr":"","claim":"","credential_kind":"","domain":"","evidence_id":"","evidence_ids":["evi_01m1y2whfh3ca875z2x8v8h7qt","evi_01m1y2whfh7kq2m4c8x1z9vb3n"],"kind":"finding","label":"SMB relay to SYSVOL on dc01","media_kind":"","port":0,"protocol":"","severity":"high","sid":"","size_bytes":0,"status":"confirmed","summary":"Captured NTLM authentication from 10.20.0.14 was relayed to the SYSVOL share on dc01, yielding read access to group policy preferences. Secret material is referenced, not stored (evi_).","transport":""}
+
+F3 canonical bytes (656 B):
+{"addresses":[],"attrs":{"cvss_v3_x10":87,"first_seen_task":"task_01m1y2whfh1txm57x8dn41r9hg","relay_tool":"ntlmrelayx"},"basis":"","cidr":"","claim":"","credential_kind":"","domain":"","evidence_id":"","evidence_ids":["evi_01m1y2whfh3ca875z2x8v8h7qt","evi_01m1y2whfh7kq2m4c8x1z9vb3n"],"kind":"finding","label":"SMB relay to SYSVOL on dc01","media_kind":"","port":0,"protocol":"","severity":"high","sid":"","size_bytes":0,"status":"confirmed","summary":"Captured NTLM authentication from 10.20.0.14 was relayed to the SYSVOL share on dc01, yielding read access to group policy preferences. Secret material is referenced, not stored (evi_).","transport":""}
+
+S1 canonical bytes (304 B):
+{"addresses":["10.20.0.14"],"attrs":{},"basis":"","cidr":"","claim":"","credential_kind":"","domain":"","evidence_id":"","evidence_ids":[],"kind":"service","label":"microsoft-ds","media_kind":"","port":445,"protocol":"smb","severity":"","sid":"","size_bytes":0,"status":"","summary":"","transport":"tcp"}
+```
+
+F1 and F3 differ in exactly one `attrs` value and therefore in nothing else —
+they lock A2-6.5 (an `attrs`-only change is a revision, not an update) and
+A2-4.7's dedup key at the same time. S1 locks the zero-value rule of A2-4.6:
+`"attrs":{}` and `"evidence_ids":[]` are present and non-`null` (A0-2.14), and
+the keys that do not apply to a `service` are present with `""`/`0`.
+`Tests: TestContentHashVector, TestContentDocFixedKeySet` (A2-4.6, §4.2).
+
+### 4.3 Contract tests (A2)
+
+The shared contract-test suite (`contracts/README.md`) MUST implement these ids
+for A2; the name is the identifier, one name per test, one oracle per name, and
+the clause named is the rule the test guards. §4.2's vectors are data, not a
+test id: the suite asserts their canonical bytes, lengths and digests
+byte-exactly. Ids the plan assigned inside their own clause are listed in the
+index at the end of this subsection (a clause that carries both kinds of id
+appears in both tables, with different ids in each).
+
+| Clause | Test ids |
+|---|---|
+| A2-1.3 | `TestImmutableFieldUpdateIsConflict` |
+| A2-1.5 | `TestNodeReadIgnoresUnknownFields` |
+| A2-3.2 | `TestEdgeEndpointMatrixRejects` |
+| A2-4.3 | `TestSupersedeCycleRejected`, `TestSupersedeNonCurrentRejected` |
+| A2-4.8 | `TestContentHashRecomputedFromStoredBytes` |
+| A2-7.1 | `TestMaximalNodeFitsCaps` (a maximal node per kind: every field at its cap, `attrs` 16 keys × 512 B, `addresses` 16 × 64 B, `evidence_ids` 8) |
+| A2-8.9 | `TestQuarantineFlagFlipDoesNotSkipRows` |
+| A2-10.2 | `TestNodeWriteRejectsUnknownField` |
+| A2-10.3 | `TestHardRejectMatrix` — one subtest per rejection: unknown node kind · unknown edge kind · wrong endpoint kind · not-applicable field · unparseable `cidr` · over-cap field · over-cap `attrs` · reserved key · nested/float/`null` `attrs` · self-edge · supersede of non-current · supersede cycle · cross-engagement endpoint · missing provenance |
+| A2-10.8 | `TestRejectedWriteIsStillChained` |
+| A2-11.4 | `TestGraphNodeIDFromAIsNotFoundInB`, `TestCursorFromEngagementARejectedInB`, `TestNodeDedupDoesNotSpanEngagements`, `TestEdgeDedupDoesNotSpanEngagements`, `TestNoCrossEngagementEdge`, `TestNoBareNodeIDInGraphDocuments` |
+
+Single-oracle rulings (PAIR-K1 / AM-4 — one name, one oracle, no "either" in
+an assertion):
+
+- `TestGraphNodeIDFromAIsNotFoundInB` — the **only** oracle is: `notfound`
+  (404) whose envelope `attrs.graph_node_id` **is the requested id** (ids are
+  not secrets, A0-1.7) and whose `message` does not distinguish "absent" from
+  "elsewhere" (A0-3.9).
+- `TestCursorFromEngagementARejectedInB` — the **only** oracle is
+  `validation` (400); "an empty page **or** `validation`" is not an acceptable
+  assertion (A2-11.4, A1-8.2 is the same oracle).
+
+Index of the ids carried by their own clause (the suite implements these too;
+this index exists so one grep finds every A2 test id):
+
+| Clause | Test ids |
+|---|---|
+| A2-3.6 | `TestContradictsDirectionNormalized` |
+| A2-4.5 | `TestSupersedeChainBoundAtWrite` |
+| A2-4.6 / §4.2 | `TestContentHashStableAcrossArrayOrder`, `TestContentDocFixedKeySet`, `TestContentHashVector` |
+| A2-4.7 | `TestNodeDedupKeepsEveryObservation`, `TestVerifiedRequiresIndependentObservation`, `TestReplayedEventAddsNoProvenanceEntry`, `TestProvenanceListIsOrderedByEventSeq` |
+| A2-5.3 | `TestPrincipalKindIsNotCopiedFromActor`, `TestFieldNameMappingIsTotal` |
+| A2-5.6 | `TestVerifiedRequiresIndependentObservation`, `TestSelfObservedNodeStaysInferred` |
+| A2-6.1 | `TestAttrValueRoundTrip`, `TestAttrsRejectNestedFloatNull` |
+| A2-6.3 | `TestReservedAttrKeysRejected` |
+| A2-8.2 | `TestPerKindMatchedFields`, `TestOneHopPropagation`, `TestIdentitylessNodeQuarantinedByDerivation`, `TestQuarantineRecomputedOnEveryTrigger` |
+| A2-8.3 | `TestQuarantinedNodeNotTargetableWithValidApproval`, `TestTargetResolvedByIDNotByString` |
+| A2-8.5 | `TestBlacklistedNodeSurvivesScopeWidening`, `TestBlacklistedDiscoveryIsRecordedNotRefused` |
+| A2-8.7 | `TestReportExcludedRequiresQuarantine`, `TestMachinePrincipalCannotSetReportExcluded` |
+| A2-8.8 | `TestQuarantineFlagCannotBeSuppliedOnWrite`, `TestOperatorReportExclusionIsEventLogged` |
+| A2-9.4 | `TestEveryRuleIDMatchesItsCorpusValue`, `TestNoFalsePositiveOnBenignCorpus`, `TestErrorMessageNamesFieldAndRuleIDOnly`, `TestEntropyRuleIsDeterministic`, `TestGraphSecretFreeSerialization` |
+| A2-9.7 | `TestGraphSecretFreeSerialization`, `TestCredentialNodeHoldsReferenceOnly`, `TestNoMaskingMappingInGraph` |
+| A2-10.2 | `TestValidationOrderIsDeterministic`, `TestCollapseStillEmitsQuarantineEvent` |
+| A2-10.6 | `TestNodeHasNoExportedContentSetter`, `TestGraphSeamHasExactlyFourMutationMethods`, `TestNodeDraftRejectsPlatformFields` |
+| A2-11.4 | `TestGraphEngagementBReadNeverReturnsA`, `TestNoBulkReadSpansEngagements` |
+| A2-12.5 | `TestQuarantinedNodeAbsentFromPlanningView`, `TestRetractedEdgeAbsentFromPlanningView` |
+
+Safety-path pairing (`contracts/README.md` merge gate, E-06): every safety
+clause above carries one positive and one negative id — A2-8.2
+(`TestPerKindMatchedFields` / `TestOneHopPropagation`), A2-8.3
+(`TestTargetResolvedByIDNotByString` / `TestQuarantinedNodeNotTargetableWithValidApproval`),
+A2-8.5 (`TestBlacklistedDiscoveryIsRecordedNotRefused` /
+`TestBlacklistedNodeSurvivesScopeWidening`), A2-8.7
+(`TestOperatorReportExclusionIsEventLogged` / `TestReportExcludedRequiresQuarantine`),
+A2-10.6 (`TestGraphSeamHasExactlyFourMutationMethods` /
+`TestNodeDraftRejectsPlatformFields`), A2-4.7
+(`TestNodeDedupKeepsEveryObservation` / `TestReplayedEventAddsNoProvenanceEntry`).
+
 ## 5. Traceability
 
 | Source | Decision | Clauses |
 |---|---|---|
 | **ADR-0016 §1** | per-engagement graph; closed node kinds (hosts, networks, services, accounts/identities, groups, credentials, shares, findings/hypotheses, artifacts/evidence refs); closed edge kinds; provenance on every node/edge; property-graph tables in PostgreSQL | A2-1.1, A2-2.1–2.4, A2-3.1–3.2, A2-5.1–5.6 |
 | **ADR-0016 §2** | scope alignment enforced on the graph: out-of-scope discoveries recorded as quarantined, never actionable; blacklist not representable as an actionable target; policy checks in the platform core on planning reads | A2-8.1–8.5, A2-10.1, A2-12.4/12.5 |
+| **ADR-0016 §2 + ADR-0005 §3 (per-kind evaluation)** | quarantine is derived from a **closed per-kind identity field set**, propagates one hop, is recomputed on a closed trigger list, and is never derived from prose; a target is cited by `gn_` id, never by a worker-supplied string | A2-8.2 (matched fields, derivation, triggers, `QuarantineDecider`), A2-8.3, A2-10.2 (13a/13b/13c) |
+| **ADR-0013 (offline buffering) + A0-3.11** | a replayed observation is idempotent and still attributable: the dedup collapse appends a provenance entry, a repeated `event_id` appends nothing, and the collapse is chained | A2-4.7 (bounded list ≤ 8, ordered by the A1 event `seq`, replay guard), A2-5.1, A2-5.6 (`verified` needs an independent second entry), A2-3.4, A2-10.2 (`dedup_hit`) |
+| **A1-2.1 / A1-3.3 (PAIR-A1, PAIR-A2, PAIR-M1)** | one principal vocabulary and one name per value platform-wide | A2-5.3 (five kinds, `operator`→`user`, `operator_id`→`user_id`, `principal_kind` ≠ the event `actor`), A2-2.8, A2-1.6 (the A1↔A2 mapping table) |
+| **A1-4.7 / A1 §4.3 / A0-2.15–2.16** | arrays are sorted and deduplicated **before** canonicalization, and a published fingerprint vector is normative data the shared suite reproduces byte-exactly | A2-4.6, §4.2 (F1, F1-R, F3, S1), A2-4.8 (recompute from stored bytes) |
+| **A0-1.2 / A0 §4 `KindUser` (AM-1)** | a human principal has a registered id shape, so operator attribution is validatable | A2-5.3 (`user_id` = `usr_`), A2-8.7, §6 item 2 |
+| **DESIGN §1 / DESIGN §4** | the domain layer imports foundation only; an interface is declared at its consumer; a constructor never returns a half-built value | §4 (`QuarantineDecider` declared in `internal/graph`, `NodeDraft`→`NewNode`→`PendingNode`→`WriteNode`), A2-8.2, A2-10.6, A2-11.1 |
+| **AGENTS.md (high-review, safety-path pairing)** | one positive and one negative id per safety rule; untrusted-input validation is high-review | §4.3 (index + single-oracle rulings), A2-9.4, A2-10.2, A2-10.6, A2-6.7 |
 | **ADR-0016 §3** | learning per-engagement only; no cross-engagement flow; aggregation deferred to its own ADR | A2-11.1, A2-11.2, A2-11.5 |
 | **ADR-0016 §4** | orchestrator plans from views; workers write findings; handovers are views; self-correction via `contradicts`; revision by a new node + `supersedes`, history never overwritten | A2-4.1–4.5, A2-3.6, A2-12.1, A2-12.4 |
 | **ADR-0016 §5** | PostgreSQL property-graph tables, no external graph DB | A2-1.1, A2-10.6 |
@@ -1473,20 +1663,20 @@ A hard-rejected write (Q3, A2-10.3/10.4): a cap violation is
 | **ADR-0005 §2/§3/§5** | allowlist scope, blacklist beats allowlist and cannot be overridden, scope/blacklist checks in the platform core, agents never police themselves | A2-8.2, A2-8.3, A2-8.5, A2-10.1, A2-10.7 |
 | **ADR-0009 §1/§2** | central append-only log doubles as evidence trail; evidence artifacts stored per engagement and referenced | A2-5.4, A2-9.2, A2-3.4, A2-10.8 |
 | **ADR-0019 §2** | self-contained, greppable error messages | A2-10.4, A2-6.4, A2-5.7 |
-| **ADR-0019 §5** | mandatory redaction: no captured credentials/tokens/secret material in errors or logs | A2-9.1, A2-9.5, A2-5.8, A2-9.7 |
+| **ADR-0019 §5** | mandatory redaction: no captured credentials/tokens/secret material in errors or logs | A2-9.1, A2-9.4 (the normative closed rule table), A2-9.5 (never in whole, in part or as a digest), A2-9.3 (a filter, not a guarantee), A2-5.8, A2-9.7 |
 | **ADR-0020 §3/§4** | per-run masking-mapping values are secret; captured credentials/hashes/tokens never reach a cloud endpoint under any policy; agents use opaque references | A2-9.1, A2-9.2, A2-9.3, A2-9.7 |
 | **ADR-0008 / Q14** | tool registry id + version; name/version are registry fields, not part of the id | A2-5.3 (`tool_id`, `tool_version`), A0-1.3 cited |
 | **Adversarial A1** | prompt injection / untrusted content: graph content is untrusted, never configuration, and a rejected write still leaves a trace | A2-6.7, A2-10.8, A2-5.2 |
 | **Adversarial A12** | cross-engagement leakage | A2-11.1–11.4, A2-5.7 (`notfound`), A2-3.2 (`notfound` endpoints) |
 | **A0-1.2** | `gn_` for graph nodes, `ge_` for graph edges, `evi_` for evidence | A2-1.2, A2-2.2, A2-3.1, §4 |
-| **A0-3.6** | in errors and log attrs a graph node is `graph_node_id`; `node_id` means the remote agent node — never conflated | A2-1.6, A2-5.3 (`agent_node_id`), §4.1 error example |
-| **A0-7.1 / A0-7.7** | `NodeSummaryMaxBytes` 512 B and `FindingSummaryMaxBytes` 2 KiB apply; every capped field class gets exactly one mechanism, recorded in a table | A2-7.1 (mechanism table, R for all A2 classes), A2-7.2, A2-2.2/2.3 |
+| **A0-3.6** | in errors and log attrs a graph node is `graph_node_id`; `node_id` means the remote agent node — never conflated | A2-1.2, A2-1.6 (+ the A1↔A2 mapping table), A2-5.3 (`agent_node_id`), §4.1 examples, §4.3 `TestNoBareNodeIDInGraphDocuments` |
+| **A0-7.1 / A0-7.7** | `NodeSummaryMaxBytes` 512 B and `FindingSummaryMaxBytes` 2 KiB apply; every capped field class gets exactly one mechanism, recorded in a table | A2-7.1 (mechanism table, R for all A2 classes; registry citations, AM-2 granted), A2-7.2, A2-6.4 (canonical-form measurement), A2-2.2/2.3 |
 | **A0-6.3** | unknown node kind, edge kind or status enum on write = hard reject `validation` | A2-2.1, A2-3.1, A2-2.6, A2-10.2 (steps 5, 7, 11), A2-10.5 |
 | **A0-3.9** | an id from another engagement resolves to `notfound` (404), never `forbidden` — no existence disclosure | A2-11.3, A2-11.4, A2-5.7, A2-3.2 |
-| **A0-2.14** | a canonicalized value has a fixed key set | A2-4.6 (`contentDoc`, empty A0-2.12 exclusion list), A2-4.8 (A0-2.16 stored bytes), §4 `contentDoc` |
+| **A0-2.14** | a canonicalized value has a fixed key set | A2-4.6 (`contentDoc`, empty A0-2.12 exclusion list, non-nil collections), A2-4.8 (A0-2.16 stored bytes), §4 `contentDoc`, §4.2 (the vectors that lock both) |
 | **A0-5.7** | client-supplied time is `*_claimed_at` and untrusted | A2-5.3 (`observed_claimed_at`), A2-5.5 |
 | **A0-8.8** | booleans are adjectives, no `is_` prefix | A2-8.1 (`quarantined`), A2-8.7 (`report_excluded`), A2-3.9 (`retracted`), A2-2.2 |
-| **A0-4.3** | pagination order from immutable keys, never from a mutable flag | A2-1.4 (`seq`), A2-8.9, A2-4.5 |
+| **A0-4.3** | pagination order from immutable keys, never from a mutable flag | A2-1.4/A2-1.4a (`graph_seq`, one per-engagement sequence shared by nodes and edges), A2-8.9, A2-4.5 |
 | **A0-7.10** | the Q4 caps are not jointly satisfiable for a maximal stage view; the composition rule belongs to A3 | A2-12.2, A2-12.3 (what A2 guarantees A3 can rely on), §6.11 |
 | **A0-6.2 / A0-8.3 / A0-8.5 / A0-8.2 / A0-2.6 / A0-8.9** | unknown field on write rejected; absent not null; closed enum spelling; fixed suffixes; integers only with the scale fixed by the owning contract; bounded bodies | A2-1.5, A2-1.7, A2-2.1/2.4–2.6, A2-1.6, A2-2.5 (`cvss_v3_x10` ×10), A2-10.2 step 2 |
 | **ADR-0001 / ADR-0010** | stdlib only; pgx only behind the store seam | §4 (no third-party type; `net.ParseCIDR`, `regexp`, `encoding/json` only), A2-1.1, A2-10.6 |
@@ -1494,21 +1684,30 @@ A hard-rejected write (Q3, A2-10.3/10.4): a cap violation is
 ## 6. Open for product owner
 
 Recommendations that are genuinely product-owner calls. Each is marked **PO
-confirm** at the clause too; none is decided silently. A2 is written against
-**current** A0 throughout — nothing below is assumed to be already granted.
+confirm** at the clause too; none is decided silently. A2 cites **current** A0
+throughout (A0-1.2's `usr_`, A0-7.1's registry rows, A0-3.6's `node_id`
+reservation); the four A0 amendment requests below were ruled in the Freeze
+triage and are recorded with their rulings, not left as open asks.
 
 1. **A2-5.6 / A2-2.7 — confidence semantics.** Recommend the evidence grade
    `observed` · `inferred` · `verified` instead of `low`/`medium`/`high`.
    _ADR-0016 §1: graph content is evidence, not opinion — a grade tied to a
    referenced event is checkable, an adjective about certainty is not._ Also
    confirms that Q2's "Finding carries confidence" is discharged by the
-   mandatory provenance block rather than a second finding field.
-2. **A2-5.3 — `operator_id` has no id shape.** A0-1.2 registers no prefix for a
-   human principal, so operator attribution is currently unvalidatable (A0-1.5).
-   Recommend A0 add `usr_` (or delegate the spelling to A5) — **A0 amendment
-   request**, see below. Until it lands, `principal_kind: operator` writes
-   cannot satisfy A2-5.3 and MUST be refused; that blocks operator corrections
-   and A2-8.7 report exclusion, so this is on the critical path for A2 Frozen.
+   mandatory provenance block rather than a second finding field. This is a
+   **change to a locked PO decision and needs a signature, not a confirmation**
+   — item 13 is the wording the product owner signs.
+2. **A2-5.3 — the human-principal id shape (AM-1): resolved by default for the
+   Freeze.** A0-1.2 now registers `usr_` (`^usr_B{26}$`, 30 B) and A0 §4 adds
+   `KindUser`, so a `principal_kind: user` entry's `user_id` validates per
+   A0-1.5; operator corrections and A2-8.7 report exclusion are unblocked and
+   nothing here waits on A5 (A0 owns id *shapes* — delegating the spelling
+   would split A0-1.5 validation across two contracts). BLOCK-PO8 in A2-5.3 is
+   the normative text. What remains is a **PO confirm** of the prefix spelling
+   only, and it is additive-only afterwards (A0-1.10). The former reading of
+   this item — "`operator_id` has no id shape, so `principal_kind: operator`
+   writes MUST be refused" — is withdrawn: the enum value is `user` and the
+   field is `user_id` (A2-5.3, A2-2.8).
 3. **A2-8.5 — is a blacklisted discovery recorded at all?** Recommend: recorded
    with `quarantine_reason: blacklisted`, permanently non-releasable, plus an
    A1 event (A2-8.10). _"We saw the forbidden host and did not touch it" is
@@ -1541,42 +1740,66 @@ confirm** at the clause too; none is decided silently. A2 is written against
    `cvss_v3_x10` (integer ×10, the scale A0-2.6 requires the owning contract
    to fix). _A CVSS vector string is a 2 KiB free-text blob that would eat the
    `FindingSummaryMaxBytes` budget and is not needed for v1 routing._
-9. **A2-5.4 — A1 was not on disk when A2 was drafted.** The A1 envelope fields
-   A2 consumes (`event_id`, `kind`, `recorded_at`, `seq`, `engagement_id`,
-   `run_id`, `job_id`) are taken from A0-2.17 vector V5 and A0-3.6. If A1 names
-   them differently, A2-5.3/5.4 follow A1 (A1 owns the envelope). A2 also needs
-   A1 to provide event kinds for: node created, node quarantined, quarantine
-   recomputed, node report-excluded, node superseded, edge retracted, write
-   rejected (A2-8.5/8.7/8.10, A2-3.9, A2-4.1, A2-10.8).
+9. **A2-5.4 — the A1 envelope and the A1 kinds A2 consumes.** The envelope
+   fields A2 consumes (`event_id`, `kind`, `recorded_at`, `seq`,
+   `engagement_id`, `run_id`, `job_id`) are **A1-1.1's**: A1 owns the envelope,
+   and A0-2.17 V5 is a canonicalization vector with a synthetic key set, not a
+   valid event. Every kind A2 needs exists in A1-3.3's closed list — node
+   written (`graph_node_written`, with `dedup_hit`) · node quarantined
+   (`graph_node_quarantined`) · quarantine recomputed
+   (`quarantine_recomputed`) · node report-excluded
+   (`report_inclusion_changed{included:false}`) · node superseded
+   (`graph_node_written` plus `graph_edge_written{edge_kind:"supersedes"}`;
+   there is no separate supersession kind and none is needed, A2-4.1/4.2) ·
+   edge written (`graph_edge_written`) · edge retracted
+   (`graph_edge_retracted`) · write rejected
+   (`action_blocked{reason:"graph_write_rejected", action_kind:"graph_write"}`)
+   · target refused (`action_blocked{reason:"target_quarantined"}`, A2-8.3).
+   This item is a record, not an open question: a future A1 kind rename is
+   caught by this list.
 10. **A2-9.4 — secret scan outcome.** Recommend hard reject (`validation`,
     field + rule named, value never echoed). Alternative: redact the value,
     store a marker, keep the node. _Reject is the Q3 posture and keeps the
     graph clean; redact risks a false positive silently destroying evidence —
     but reject risks stalling an engagement on a false positive, which is why
     the pattern set must ship with the contract test corpus._
+
+    **Ruled once for both contracts (PO confirm): reject, never redact.** A secret-pattern hit (A2-9.4 rule ids) is a hard reject — `validation` (400) naming the field and the rule id, the value never echoed in whole, in part or as a digest (A0-3.4) — and the rejection is chained (`action_blocked`). Redaction was rejected: a false positive would silently destroy a worker's only report of what it ran, and `redacted:true` (A1-4.6) means platform redaction, never rejection. The false-positive risk is controlled by shipping the A2-9.4 rule table with the planted-secret corpus. A1 §6.4 and A2 §6.10 are the same question and MUST NOT be answered differently.
 11. **A2-12.3 — A0-7.10 is explicitly not resolved here.** A2 states only what
     A3 may rely on (A2-12.2). The 500-node/64 KiB composition rule stays with
     A3 and the PO escalation already recorded in A0 §6.14.
+12. **A2-8.5 — blacklisted discovery: recorded, not refused (PO confirm).** The Freeze stores the node with `quarantine_reason:"blacklisted"`, never releasable, never in a planning view, and chains `graph_node_quarantined{blacklist_match}` — "we saw the forbidden target and did not touch it". The alternative reading of ADR-0016 §2 (refuse the write, store nothing about a forbidden system) is defensible and minimizes stored data; the product owner MUST confirm before Frozen, because refusing the write makes the near-miss unprovable in a customer report.
+13. **A2-2.7 / A2-5.6 — deviation from Q2 (PO signature required, not confirmation).** Q2 records "Finding carries confidence". A2 implements that as the mandatory provenance grade `observed · inferred · verified` on every node and edge instead of a finding field, so a grade is always tied to a referenced event (ADR-0016 §1: evidence, not opinion). This **changes a locked decision**; the product owner MUST sign it before A2 flips to Frozen. With §4 A2-04 (provenance set) `verified` is now reachable: it requires a second, independent observation.
+14. **PO confirm — operator release of quarantine is removed.** `operator_release` is deleted from A1's `quarantine_kind` enum and A2 provides no release operation: an `out_of_scope` node is released **only** by an operator scope change and the recomputation it causes (A2-8.5, ADR-0016 §2 — an out-of-scope node can never be a target of a planned action). `operator_quarantine` (tightening) is kept, and a `blacklisted` node is never releasable. If the product owner wants a manual release it MUST be a new ADR amending ADR-0016 §2 and MUST require the target to be inside the widened allowlist at release time.
 
 ### A0 amendment requests
 
-A2 is written against current A0; these are requests, not assumptions.
+A2 cites current A0; these were requests, and all four are ruled (plan §3 of
+the principal review, applied at the Freeze). They are kept as a record of what
+A2 depends on in A0, with the ruling in the last column.
 
-| # | A0 clause | Request | Why A2 needs it |
+| # | A0 clause | Request | Ruling and why A2 needs it |
 |---|---|---|---|
-| AM-1 | A0-1.2 | Register a prefix for a human operator principal (`usr_` recommended), or state that A5 owns it | A2-5.3 `operator_id` cannot be validated (A0-1.5) without one; blocks operator corrections and A2-8.7 |
-| AM-2 | A0-7.1 | Adopt the A2-local cap constants of A2-7.1 (`NodeLabelMaxBytes`, `HypothesisClaimMaxBytes`, `HypothesisBasisMaxBytes`, `AttrValueMaxBytes`, `AttrsTotalMaxBytes`, `AttrsMaxKeys`, `EvidenceIDsMax`, `AddressesMax`, `AddressMaxBytes`) into the single A0 table/const block | A0-7.7 delegates *mechanism* assignment to A2 but A0-7.1 is the one place caps live; two const blocks will drift |
-| AM-3 | A0-3.6 | Extend the rule from "errors and log attrs" to graph payloads: `node_id` is reserved for the remote agent node everywhere, and A2's payload spellings (`source_id`, `target_id`, `supersedes_id`, `superseded_by_id`, `agent_node_id`) are the blessed names | A2-1.6 currently states a payload convention that A0-3.6 does not literally cover |
-| AM-4 | A0-8.2 | Confirm `*_ref` is not needed: A2 uses `evidence_id` / `evidence_ids` for `evi_` references because A0-8.2 fixes `*_id` for identifiers | Avoids a second suffix convention for the same thing (A2-9.2) |
+| AM-1 | A0-1.2 | Register a prefix for a human principal (`usr_`) | **Resolved by default for the Freeze** (plan §1 PO-8, BLOCK-PO8 in A2-5.3): A0-1.2 registers `usr_` (`^usr_B{26}$`, 30 B) and A0 §4 adds `KindUser`, so A2-5.3's `user_id` validates per A0-1.5. Not delegated to A5 — A0 owns id *shapes*. **Awaits PO confirmation of the spelling only** (§6 item 2); additive-only afterwards (A0-1.10) |
+| AM-2 | A0-7.1 | Adopt the A2 cap constants (`NodeSummaryMaxBytes`, `FindingSummaryMaxBytes`, `MaxSupersedeChain`, `AttrsMaxKeys`, `AttrKeyMaxBytes`, `AttrValueMaxBytes`, `AttrsTotalMaxBytes`, `AddressesMax`, `EvidenceRefsMax`, `ToolVersionMaxBytes`) into the single A0 table/const block | **Accepted** (PAIR-N1): A0-7.1 is the one place caps live, and A2-7.1 now cites the registry rows instead of declaring values. Two constants moved with it — A2's `EvidenceIDsMax` is gone in favour of `EvidenceRefsMax` = 8, and A2's former `ToolVersionMaxBytes` = 32 was a defect (the registry value 64 governs). A2-local constants stay A2's under A0-7.7's delegation |
+| AM-3 | A0-3.6 | Extend the `node_id` reservation from "errors and log attrs" to graph payloads, and bless A2's payload spellings (`source_id`, `target_id`, `supersedes_id`, `superseded_by_id`, `agent_node_id`) | **Accepted in part.** The reservation is granted: `node_id` means the remote agent node (`slp_node_`) everywhere, so A2-1.6's rule is enforceable and `TestNoBareNodeIDInGraphDocuments` has an A0 basis. Blessing A2's *field names* is refused — A0 does not own per-contract payload vocabularies. A2 publishes the mapping instead: A2-1.6's A1↔A2 table (BLOCK-A2-14 / PAIR-M1) is the single source, cited by A1-3.6 |
+| AM-4 | A0-8.2 | Confirm `*_ref` is not needed: A2 uses `evidence_id` / `evidence_ids` for `evi_` references because A0-8.2 fixes `*_id` for identifiers | **Accepted**: no `*_ref` suffix is added, A2-9.2's spellings stand, and `evidence_refs` (A1-1.1) remains the single approved exception to A0-8.2 — one suffix convention per fact, no drift |
 
 ### Cross-contract requests (not A0)
 
-- **A1** — envelope field names (item 9) and the event kinds listed there; the
-  ingest dedup key A2 relies on for idempotent replay (A2-4.7, A0-3.11).
+- **A1** — the envelope field names and the event kinds item 9 lists (all
+  confirmed present in A1-1.1/A1-3.3: `graph_node_written`,
+  `graph_node_quarantined`, `graph_edge_written`, `graph_edge_retracted`,
+  `quarantine_recomputed`, `report_inclusion_changed`,
+  `action_blocked{graph_write_rejected, target_quarantined}`); the ingest dedup
+  key A2 relies on for idempotent replay (A2-4.7, A0-3.11); and the
+  byte-identical PAIR blocks A2 also carries (BLOCK-A2-14's mapping table,
+  BLOCK-PO6, BLOCK-PO9, PAIR-Q1/Q2/SEC1/A1/A2).
 - **A3** — the A0-7.10 composition rule, the planning-vs-reporting view
   mapping (A2-12.4), and its own mechanism-T assignments (A0-7.7).
 - **A4** — per-endpoint body size bounds (A0-8.9, A2-10.2 step 2), the history
   read parameter (A2-4.5), route-table audit for A2-11.4's
   `TestNoBulkReadSpansEngagements`.
 - **A5** — every graph-write verb on the machine-principal exclusion list
-  (A2-10.1, Q6); the operator principal id shape (AM-1).
+  (A2-10.1, Q6). The human-principal id shape is **not** A5's: A0-1.2 owns
+  `usr_` (AM-1 resolved, §6 item 2).

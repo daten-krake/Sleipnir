@@ -294,7 +294,7 @@ kind (A1-3.5).
 |---|---|---|---|
 | `graph_node_written` | `(platform, "graph")` | `graph_node_id:string` `node_kind:string(32)` `source_event_id:string` `supersedes_graph_node_id:string` `quarantined:bool` `content_hash:64hex` `dedup_hit:bool` `summary_bytes:int` `attrs_count:int` | ADR-0016 §1 (provenance), §4 (`supersedes`, never overwrite), Q2, A2-4.6 (`content_hash`), A2-4.7 (`dedup_hit`) |
 | `graph_edge_written` | `(platform, "graph")` | `graph_edge_id:string` `edge_kind:string(32)` `from_graph_node_id:string` `to_graph_node_id:string` `source_event_id:string` `quarantined:bool` `dedup_hit:bool` | ADR-0016 §1, A2-4.7 (`dedup_hit`) |
-| `graph_node_quarantined` | `(user, "")` **or** `(platform, "graph")` | `graph_node_id:string` `quarantine_kind:enum{out_of_scope_discovery,blacklist_match,operator_quarantine}` `reason:string(512)*` `source_event_id:string` | ADR-0016 §2, C5, Q5. There is **no** `operator_release` value (A1-3.6, §6 item 18) |
+| `graph_node_quarantined` | `(user, "")` **or** `(platform, "graph")` | `graph_node_id:string` `quarantine_kind:enum{out_of_scope_discovery,blacklist_match,operator_quarantine}` `reason:string(512)*` `source_event_id:string` | ADR-0016 §2, C5, Q5. There is **no** `operator_release` value (A1-3.6, §6 item 14) |
 | `quarantine_recomputed` | `(platform, "graph")` | `trigger:enum{scope_changed,blacklist_changed,node_written,edge_written}` `trigger_event_id:string` `nodes_evaluated:int` `nodes_quarantined:int` `nodes_released:int` `duration_ms:int` | A2-8.5 (a scope/blacklist change recomputes quarantine and the recomputation is itself recorded), ADR-0016 §2, C5. Per-node effects are separate `graph_node_quarantined` events; this event records the batch and its trigger |
 | `graph_edge_retracted` | `(user, "")` **or** `(platform, "graph")` | `graph_edge_id:string` `edge_kind:string(32)` `from_graph_node_id:string` `to_graph_node_id:string` `reason:string(512)*` `source_event_id:string` | A2-3.9 (the only mutable edge field is always accompanied by an A1 event carrying the reason), ADR-0016 §4 (self-correction). `source_event_id` is the observation that contradicted the edge, `""` when operator-initiated |
 | `report_inclusion_changed` | `(user, "")` | `graph_node_id:string` `included:bool` `reason:string(512)*` | Q5 (operator removes a quarantined discovery from the report). The flag itself is mutable graph state (A2) and MUST never be an order key (A0-4.3) |
@@ -868,6 +868,7 @@ absorbed" — including every offline-node replay (ADR-0013).
   verification with `genesis_invalid` (A1-6.3). Exactly one genesis per chain:
   a second `chain_genesis` event is a platform defect and a break
   (`duplicate_event_id` if it reuses an id, `genesis_invalid` if it does not).
+  `Tests: TestSecondGenesisIsRejected, TestAppendRefusedWithoutValidGenesis`.
 
 - **A1-5.4** `seq` and ordering under concurrent writes. `seq` is a
   per-engagement integer, `0` at genesis, strictly increasing by exactly `1`,
@@ -887,15 +888,22 @@ absorbed" — including every offline-node replay (ADR-0013).
     false positive caused by an unrelated failure.
   - A failed append MUST NOT consume a `seq` and MUST NOT leave a row; the
     chain is written by one transaction or not at all (A1-7.8).
+    `Tests: TestFailedAppendConsumesNoSeq, TestNoGlobalSequenceSharedAcrossEngagements`.
   - `recorded_at` MUST be read from the injected clock (A0-5.4) **after** the
     per-engagement lock is taken, and MUST be clamped forward to
     `max(clock_now, prev_recorded_at)`, so `recorded_at` is non-decreasing
     along `seq` by construction and a backwards host clock step can never
-    produce a time regression in a chain. _The clamp is bounded by the size of
-    the clock step and is platform time either way (A0-5.6); a monotone
-    `recorded_at` is what makes "the log shows X before Y" a statement an
-    auditor can rely on. A0 amendment request AM-3 asks A0-5.4 to record this
-    refinement._
+    produce a time regression in a chain. The forward clamp compares A0-5.1
+    strings **byte-wise** — for a fixed-format UTC millisecond timestamp, byte
+    order equals time order — and is bounded to 1000 ms by A0-5.4: beyond that
+    bound the platform uses the true clock reading, logs at error level with
+    the engagement/run correlation attributes (ADR-0019 §3), and `recorded_at`
+    MAY then be non-monotone; A1-8.1's rule that only `seq` orders anything is
+    the compensating control. The clamp input is `ChainHead.LastRecordedAt`
+    (A1-5.6). _A monotone `recorded_at` is what makes "the log shows X before Y"
+    a statement an auditor can rely on; the bound is what keeps a stuck clock
+    from being laundered into a plausible timeline (PAIR-T1, A0-5.4)._
+    `Tests: TestRecordedAtClampIsMonotone, TestRecordedAtClampBeyondBoundIsLogged`.
   - `occurred_at` and `occurred_claimed_at` are **not** clamped and are not
     monotone: they describe the occurrence, not the commit (A1-1.4).
 
@@ -922,14 +930,21 @@ absorbed" — including every offline-node replay (ADR-0013).
 - **A1-5.6** The platform MUST keep per-engagement **chain-head state** outside
   the event rows: `head_seq`, `head_hash`, `event_count`, `integrity_state`
   (`unverified` · `verified` · `failed` · `overridden`, A1-6.4),
-  `verified_at`, `verified_head_hash`, and the chain's `chain_spec`. It is
-  updated in the same transaction as every append (A1-5.4) and every
-  verification (A1-6). This state is **mutable platform bookkeeping, not event
-  content**: it MUST NOT appear in an event document (A1-1.6) and it is never
-  hashed. Its columns are the store seam's business (A1-7.9); its existence and
-  semantics are A1's. _Without a head row, every append would have to scan for
-  the maximum `seq` and every verification would have no cheap starting point;
+  `verified_at`, `verified_head_hash`, and the chain's `chain_spec`, plus the
+  four bookkeeping fields the append transaction writes and reads:
+  `LastRecordedAt string` (A1-5.4's clamp input), `LastBreakSeq int64`,
+  `LastBreakKind BreakKind` and `LastBreakEventID string` (A1-6.3's break-dedup
+  state). It is updated in the same transaction as every append (A1-5.4) and
+  every verification (A1-6). This state is **mutable platform bookkeeping, not
+  event content**: it MUST NOT appear in an event document (A1-1.6) and it is
+  never hashed. The **row** is internal; the **projection**
+  `(head_seq, head_hash, integrity_state, verified_at)` is served to authorized
+  readers and to every export, with a wire shape A4 owns (A1-8.9, A1-6.4). Its
+  columns are the store seam's business (A1-7.9); its existence and semantics
+  are A1's. _Without a head row, every append would have to scan for the
+  maximum `seq` and every verification would have no cheap starting point;
   with it, `row_count_mismatch` (A1-6.3) becomes a one-row check._
+  `Tests: TestChainHeadProjectionIsServedRowIsNot, TestChainHeadFieldsNeverHashed`.
 
 - **A1-5.7** Stored preimage bytes (A0-2.16 — the obligation A0 assigns to A1).
   The store MUST persist, per event row: the **exact canonical preimage bytes**
@@ -941,9 +956,16 @@ absorbed" — including every offline-node replay (ADR-0013).
   (A1-1.8) MUST be produced by decoding the stored preimage, adding the three
   chain fields with their stored values, and re-canonicalizing (A0-2) — one
   source of bytes, no possibility of the stored copy and the served copy
-  drifting. _A later Go version, a new struct field or a different encoder
-  setting would otherwise silently invalidate every historical hash, and the
-  failure would look like tampering._
+  drifting. `Served(preimage, c)` =
+  `cjson.With(preimage, map[string]any{"seq": c.Seq, "prev_hash": c.PrevHash,`
+  `"hash": c.Hash})` (PAIR-C1, A0 §4), operating on the generic document only;
+  it MUST decode with `UseNumber()` and re-emit every number's literal text
+  verbatim (A0-2.5, F-01), and MUST reject a preimage that fails A0-2 with
+  `preimage_mismatch` (A1-6.3). U+2028/U+2029 are literal in the served bytes
+  (A0-2.7) — see §4.3 row 3. _A later Go version, a new struct field or a
+  different encoder setting would otherwise silently invalidate every
+  historical hash, and the failure would look like tampering._
+  `Tests: TestServedBytesReproducible, TestServedRoundTripIsIdentity`.
 
 - **A1-5.8** What the chain proves, and what it does not (declared limits,
   not defects):
@@ -960,15 +982,26 @@ absorbed" — including every offline-node replay (ADR-0013).
     head **outside** the store being verified. v1 mitigations, in force from
     day one: (1) the store seam exposes no update or delete (A1-7.2); (2) the
     platform MUST emit `(engagement_id, head_seq, head_hash, integrity_state)`
-    to the application log (`slog`, ADR-0019 §3) at every verification
-    (A1-6.2) and at every append that crosses a 1000-`seq` boundary, so the
-    log trail — a different store, with different access — contradicts a
-    truncated chain; (3) every delivered export carries the head hash
-    (A1-6.6), so a truncated chain contradicts the report already in the
-    customer's hands. Whether v1 additionally anchors the head hash over the
+    to the application log (`slog`, ADR-0019 §3) **and** MUST write the same
+    tuple to a store the event-store role cannot UPDATE or DELETE — a separate
+    append-only `chain_head_trail` table created with
+    `REVOKE UPDATE, DELETE` from the event-store role (A1-7.9's rule) — at
+    every verification (A1-6.2), at every append that crosses a
+    **100**-`seq` boundary (`HeadLogIntervalSeq`, §4.1) and at every
+    `run_ended`/`hard_stop_fired`, so the trail — a different store, with
+    different access — contradicts a truncated chain; (3) every delivered
+    export carries the head hash (A1-6.6), so a truncated chain contradicts the
+    report already in the customer's hands. Startup verification (A1-6.2) MUST
+    compare the walked head against the highest `chain_head_trail` row for that
+    engagement and MUST report `head_regression` as a break with A1-6.4's
+    consequences when the stored head `(head_seq, head_hash)` is lower or
+    different from the highest head this platform recorded out-of-band.
+    `Tests: TestHeadRegressionDetected, TestHeadTrailIsAppendOnly`.
+    Whether v1 additionally anchors the head hash over the
     ADR-0012 §3 signed webhook (cheap, and the only anchor outside the
     deployment) is a **PO decision** (§6.7), because Q11 excluded external
-    anchoring.
+    anchoring; the Freeze ships the in-platform anchor only and the residual
+    risk is printed into A1-6.6's export wording.
   - **Does not survive unrestricted write access to the store plus the log:**
     an attacker who can rewrite both can forge a consistent history. That is
     host compromise, which is outside a hash chain's threat model
@@ -1036,9 +1069,16 @@ absorbed" — including every offline-node replay (ADR-0013).
   - **`startup`** — before the platform serves any `/api/v1` request for that
     engagement, for every engagement chain it hosts. A chain whose startup
     verification has not completed MUST NOT accept appends (A1-7.11) and MUST
-    NOT be exported. Startup verification runs per chain, in parallel across
-    engagements, and MUST NOT block startup of the platform process for
-    engagements already verified in this boot.
+    NOT be exported. Startup verification runs asynchronously, one goroutine
+    per engagement chain, owned and cancellable per DESIGN §6; it MUST NOT
+    block startup of the platform process. While a walk is incomplete
+    `integrity_state` is `unverified`: a read served before the walk completes
+    MUST carry `integrity_state:"unverified"` on the same carrier A4 uses for
+    `failed` (A1-6.4), appends return `timeout` (A1-7.5), and **no
+    customer-facing artifact MUST be produced from an `unverified` chain**
+    (`integrity_failed` 409, A0-3.1); other engagements are unaffected.
+    `Tests: TestReadDuringStartupWalkIsFlaggedUnverified,
+    TestExportFromUnverifiedChainRefused, TestAppendRefusedBeforeStartupVerificationCompletes`.
   - **`pre_export`** — immediately before any customer-facing artifact is
     produced or released: the HTML report, a PDF export, the Q7
     `GET /engagements/{id}/findings` JSON export, and any evidence bundle or
@@ -1078,14 +1118,19 @@ absorbed" — including every offline-node replay (ADR-0013).
   | `genesis_invalid` | `seq` 0 is missing, is not `chain_genesis`, has a `prev_hash` other than `ChainZero`, has a `chain_spec` other than the A1-5.3 constant, or a second genesis exists (T13) |
   | `row_count_mismatch` | chain-head `event_count`/`head_seq` disagrees with the rows present (T14) |
   | `engagement_mismatch` | a stored row's `engagement_id` differs from the chain's engagement — the cross-engagement splicing case (A12, T6) |
+  | `head_regression` | the stored head `(head_seq, head_hash)` is lower or different from the highest head this platform recorded out-of-band for that engagement in `chain_head_trail` (A1-5.8, T10) |
 
   The platform MUST set `integrity_state:"failed"`, MUST log the break at error
   level with the correlation attrs (ADR-0019 §3, A0-3.8), and MUST NOT append a
   duplicate `chain_break_detected` for the same `(break_seq, break_kind)` on a
   later run — a repeat is logged, not re-chained, so the state stays visible
-  without growing the log. A break MUST NOT be reported as an HTTP 5xx: it is
+  without growing the log. The break-dedup state is
+  `ChainHead.LastBreakSeq`/`LastBreakKind` (A1-5.6), written in the same
+  transaction as the break event, so two concurrent walks cannot each append
+  one. A break MUST NOT be reported as an HTTP 5xx: it is
   a state, not a platform crash (A0-3.1 keeps `integrity_failed` at 409 so it
   is never retried or alerted as a bug).
+  `Tests: TestOneBreakEventPerRun, TestBreakDedupStateWrittenInSameTransaction`.
 
 - **A1-6.4** Consequences of `integrity_state:"failed"` (Q11, verbatim
   mapping):
@@ -1116,6 +1161,12 @@ absorbed" — including every offline-node replay (ADR-0013).
     behaviour as `failed` and additionally unblocks exports under the
     conditions of A1-6.5.
 
+  `Tests: TestExportBlockedOnFailedChain` (each of the four artifact classes —
+  report HTML, report PDF, findings JSON export, evidence bundle — →
+  `integrity_failed` 409 naming `break_seq`/`break_kind`),
+  `TestInternalViewOverrideDoesNotAuthorizeExport`,
+  `TestAppendsContinueOnFailedChain`.
+
 - **A1-6.5** Operator override — explicit, attributed, single-purpose, never
   silent (Q11). An override MUST be recorded as an `integrity_override` event
   **before** the blocked operation proceeds, carrying:
@@ -1138,10 +1189,28 @@ absorbed" — including every offline-node replay (ADR-0013).
   standing waiver and it has no expiry of its own; each released artifact MUST
   additionally name the override event that released it (A1-6.6), so one
   override cannot silently authorize an unlimited stream of unrelated exports.
-  Only a **user** principal with the admin role (SPEC §3, A1-3.3) may override:
-  a machine principal can never do it (Q6, A1-2.7 — `integrity_override` is not
-  client-appendable, A1-3.4), and an operator-scoped user MAY NOT override
-  another engagement's break. **PO confirm** (§6.6).
+
+  Only a `user` principal holding the **admin** role may compose
+  `integrity_override` (SPEC §3 places integrity-class controls next to the
+  hard stop; Q11's "operator" reads as "human", and this clause narrows it —
+  §6 item 15). An operator-scoped user — including one assigned to the
+  engagement — MUST NOT override any break. A5 MUST gate the endpoint on the
+  admin role and MUST return `forbidden` (A0-3.1, principal-level, naming no
+  object) to an operator. A machine principal can never override (Q6, A1-2.7 —
+  `integrity_override` is not client-appendable, A1-3.4).
+  `Tests: TestOverrideIsAdminOnly, TestOperatorCannotOverrideAnyBreak.`
+
+  An `integrity_override` with `scope:"export"` is **single-use** (mirroring
+  Q10): it authorizes exactly one artifact release. The platform MUST bind the
+  release to it atomically — a uniqueness constraint on
+  `(engagement_id, override_event_id)` in the release record — and MUST compose
+  an `artifact_released` event naming `override_event_id`, `head_seq`,
+  `head_hash` and the artifact's `evi_` id. A second release requires a second
+  human decision and MUST fail with `conflict` + `integrity_failed` (A0-3.1).
+  An override with any other `scope` still dies at the next `chain_verified` or
+  `chain_break_detected`.
+  `Tests: TestSingleUseOverride, TestOverrideDiesAtNextBreak,`
+  `TestArtifactReleasedNamesItsOverride.` **PO decision** (§6 item 15).
 
 - **A1-6.6** Integrity metadata an export MUST carry. Every customer-facing
   artifact (report HTML/PDF, findings JSON export, evidence bundle) MUST embed
@@ -1153,9 +1222,9 @@ absorbed" — including every offline-node replay (ADR-0013).
   |---|---|---|
   | `chain_spec` | string | the A1-5.3 constant the chain was built under |
   | `engagement_id` | `eng_` | the chain the artifact was built from |
-  | `head_seq` | int | chain head at release time |
-  | `head_hash` | 64hex | chain head digest at release time — the value an auditor re-checks the log against |
-  | `integrity_state` | enum `verified` · `failed_overridden` | machine-readable verdict; `failed` is never exportable (A1-6.4) |
+  | `head_seq` | int | the `seq` of the **last row the walk verified** — identical to the `head_seq` payload of the event named by `chain_verified_event_id`, not the head after that event was appended; `head_seq` therefore equals the post-append `ChainHead.HeadSeq` minus one (A1-5.6) |
+  | `head_hash` | 64hex | the digest of that same last verified row — the value an auditor re-checks the log against |
+  | `integrity_state` | enum `verified` · `failed_overridden` | machine-readable verdict; `failed` and `unverified` are never exportable (A1-6.4) |
   | `verified_at` | timestamp | when the `pre_export` walk that produced this block finished (A0-5.1) — for `failed_overridden` that is the **failing** walk's completion time |
   | `chain_verified_event_id` | `evt_` | the `chain_verified` event of that walk |
   | `integrity_override_event_id` | `evt_` | the override that released this artifact; `""` when `integrity_state:"verified"` |
@@ -1169,6 +1238,36 @@ absorbed" — including every offline-node replay (ADR-0013).
   one without asking us, and can see who decided — the report is a legal
   artifact (adversarial A11), so "never silent" has to survive into the
   document itself._
+
+  The export `integrity_state` is a **distinct** enum
+  (`verified` · `failed_overridden`) derived from A1-5.6's
+  (`unverified` · `verified` · `failed` · `overridden`). The two lists MUST NOT
+  be used interchangeably:
+
+  | A1-5.6 `integrity_state` | exportable? | A1-6.6 `integrity_state` |
+  |---|---|---|
+  | `unverified` | no — `integrity_failed` (409, A1-6.2/A1-6.4) | not emitted |
+  | `verified` | yes | `verified` |
+  | `failed` | no — `integrity_failed` (409, A1-6.4) | not emitted |
+  | `overridden` | yes, once (A1-6.5) | `failed_overridden` |
+
+  The export path MUST compose an `artifact_released` event (A1-3.3, A1-4.2)
+  for every released customer-facing artifact, naming `artifact_kind`,
+  `artifact_evidence_id`, this block's `head_seq`/`head_hash`,
+  `integrity_state`, `override_event_id` (`""` when `verified`) and
+  `recipient_ref`. It is the enforcement point for the single-use override of
+  A1-6.5: the release record's uniqueness constraint on
+  `(engagement_id, override_event_id)` and this event are the same decision,
+  recorded twice. `Tests: TestExportComposesArtifactReleased,`
+  `TestExportIntegrityStateIsNotTheChainStateEnum`.
+
+  _Residual risk printed here because the PO declined the out-of-band webhook
+  anchor (§6 item 16, PO-3): the Freeze ships the in-platform anchor only
+  (`chain_head_trail`, A1-5.8). An attacker holding both store-write and
+  log-write access on the same host — the default Docker deployment, SPEC §10 —
+  can forge history and this metadata block with it. A customer who needs that
+  case closed MUST be given the ADR-0012 §3 signed-webhook anchor by a later
+  ADR._
 
 - **A1-6.7** Third-party re-verification seam. The platform MUST be able to
   produce a **verification bundle** for one engagement: every event's stored
@@ -1309,8 +1408,18 @@ absorbed" — including every offline-node replay (ADR-0013).
   | token bound to engagement A used against B (A1-2.5) | `notfound` (404), **never** `forbidden` (A0-3.9, A12) | none — no existence disclosure |
   | run binding mismatch (A1-2.6) | `forbidden` (403) | `action_blocked{append_not_permitted, events_append}` |
   | token revoked / expired (Q8, hard stop) | `auth` (401) | none |
-  | chain not verified at startup, or no valid genesis (A1-5.3, A1-6.2) | `internal` (500) — platform defect, fail closed (A1-7.11) | none |
+  | chain not verified at startup (A1-6.2 walk in flight) | `timeout` (504, retryable per A0-3.11 and A1-7.11) | none — nothing was appended |
+  | no valid genesis (A1-5.3) | `internal` (500) — platform defect, fail closed (A1-7.11) | none |
   | canonicalization or store failure, uniqueness race (A0-1.4) | `internal` (500) / `timeout` (504, retryable with the same key) | none; logged once (A0-3.8) |
+
+  `internal` (500) is reserved for the no-valid-genesis case (A1-5.3), which is
+  a platform defect (A0-3.1) and fail-closed (A1-7.11). An append refused
+  because the chain's startup verification has not completed returns
+  **`timeout`** (504, retryable per A0-3.11): the walk finishing is a normal
+  outcome, not a defect, and the client retries with the same
+  `idempotency_key`.
+  `Tests: TestAppendRefusedBeforeStartupVerificationCompletes,`
+  `TestAppendRefusedWithoutValidGenesis`.
 
   Every message follows ADR-0019 §2 / A0-3.4
   (`component.Function: what was attempted: key identifiers: cause`), is
@@ -1338,6 +1447,24 @@ absorbed" — including every offline-node replay (ADR-0013).
     `occurred_claimed_at` is a **hit**, and the originally recorded claim
     stands — a retry MUST NOT be able to shift a stored timestamp (A1-1.4,
     A0-5.7).
+
+    `PayloadHash` = `cjson.SHA256Hex(cjson.CanonicalValue(struct{Kind Kind`
+    `` `json:"kind"`; Payload Payload `json:"payload"` `` `}{…}))`, computed
+    **after** the A1-7.10 normalization steps, so a retry whose array order
+    differs is a dedup hit. No other field participates.
+
+    Worked vector (§4.3 row 1's `kind` and `payload`) — normative, like §4.3:
+    **len 293 · SHA-256
+    `19d976a83cc9d36ac160313a20b80c0745fff805526b7f43f88d05e33c7be5e5`** over
+
+    ```
+    {"kind":"command_executed","payload":{"command":"nmap -sV -p 445 10.20.0.14","duration_ms":48210,"exit_code":0,"output_bytes":18432,"output_evidence_id":"evi_01m1y2whfh3ca875z2x8v8h7qt","redacted":false,"target":"10.20.0.14","tool_id":"tool_01m1y2whfhfjdvwqp9pfxqekmf","tool_version":"1.4.2"}}
+    ```
+
+    _This is the preimage only — no envelope field, so it is not the §4.3 row 1
+    event digest. `Tests: TestPayloadHashVector,`
+    `TestIdempotencyKeyReuseWithDifferentPayloadIsConflict,`
+    `TestDedupHitWritesNoEvent, TestRetryCannotShiftClaimedTime`._
   - **Semantics:** first write wins. A repeat with an **identical** payload
     hash is a **dedup hit**: the platform writes nothing, consumes no `seq`,
     and returns the stored envelope of the original event with the same success
@@ -1354,10 +1481,19 @@ absorbed" — including every offline-node replay (ADR-0013).
     evidence loss and strictly worse than a duplicate. The client key makes the
     retry decision explicit; a worker/node that buffers offline (ADR-0013, Q9)
     generates it once per buffered event and replays with it.
-  - Platform-composed events use the same mechanism internally: the composing
-    subsystem supplies a deterministic key derived from the operation it
-    records (e.g. `approval_id` + decision, `evidence_id`, spawn request
-    `event_id`), so an internal retry of a composition is idempotent too.
+  - Platform-composed events use the same mechanism internally. The A1-7.6
+    uniqueness constraint applies to rows appended through `events:append` only;
+    a platform-composed row MUST carry a non-empty deterministic key:
+    `approval_*` → `approval_id` + decision · `evidence_stored` → `evidence_id`
+    · `job_spawned`/`task_spawned`/`container_started` →
+    `spawn_request_event_id` · `graph_*` → the written `gn_`/`ge_` id ·
+    `chain_verified` → `trigger` + `head_seq` · `chain_break_detected` →
+    `break_seq` + `break_kind` · `cleanup_*` → `revert_event_id` ·
+    `notification_sent` → `related_event_id` + `attempt` · `llm_call` → the
+    gateway's per-call id · otherwise the composing subsystem's operation id.
+    `""` MUST NOT be used, so an internal retry of a composition is idempotent
+    too. `Tests: TestPlatformDedupKeyIsNonEmptyPerKind,`
+    `TestPlatformDedupKeyEmptyRejected`.
 
 - **A1-7.7** Idempotent replay, and what A2's ingest may rely on (A2-4.7,
   A1-3.8). Guarantees:
@@ -1429,14 +1565,23 @@ absorbed" — including every offline-node replay (ADR-0013).
   produced it fails (`timeout` 504 / `internal` 500, A0-3.1) and the caller
   retries with the same `idempotency_key` (A1-7.6); a worker or node whose
   append cannot reach the platform buffers locally and replays (ADR-0013, Q9).
+  A retry MUST reuse the same `idempotency_key` (A1-7.6); a kind declared
+  terminal by A0-3.11 MUST NOT be retried except where its owning contract
+  declares the write retryable under `internal` with a deduplication key — A1
+  declares exactly that one write retryable, `events:append` under A1-7.6
+  (PAIR-R1, A0-3.11).
   Two preconditions are hard gates, both fail-closed: a chain with no valid
   genesis MUST NOT accept appends (A1-5.3) and a chain whose startup
-  verification has not completed MUST NOT accept appends (A1-6.2) — in both
-  cases the platform returns `internal` and logs at error level, because both
-  are platform defects, not client errors. _The audit spine is the product's
+  verification has not completed MUST NOT accept appends (A1-6.2). The first
+  returns `internal` and logs at error level, because it is a platform defect,
+  not a client error; the second returns `timeout` (A1-7.5), because the walk
+  completing is a normal outcome. _The audit spine is the product's
   differentiator (ADR-0009 Consequences); a silently missing row is
   indistinguishable from a deleted one, and both destroy the report's legal
   value (adversarial A11)._
+  `Tests: TestAppendRefusedWithoutValidGenesis,`
+  `TestAppendRefusedBeforeStartupVerificationCompletes,`
+  `TestRetryReusesIdempotencyKey`.
 
 - **A1-7.12** Commit before success — with one deliberate exception. The
   platform MUST NOT report an action as completed to a caller before the event
@@ -1446,10 +1591,20 @@ absorbed" — including every offline-node replay (ADR-0013).
   `container_killed` and token revocation (Q8) MUST NOT block on the event
   store. The kill happens first; its event is written after and retried until
   it lands, and a failure to write it MUST be logged at error level and
-  surfaced in the UI. _Availability of the kill switch beats durability of its
-  record (ADR-0005 §4): a platform that cannot stop a container because its
-  database is slow has failed at the only thing that must never fail. The gap
-  is bounded and visible, which is the most an audit trail can do about it._
+  surfaced in the UI. The pending kill record MUST be written to a durable
+  **outbox** — an append-only table created with `REVOKE UPDATE, DELETE` from
+  the event-store role (A1-7.9) — **before** the kill is issued, and startup
+  MUST drain the outbox into the chain; a kill whose event cannot be composed
+  MUST surface in the UI as an unresolved integrity warning on A1-6.4's
+  carrier, not only in `slog`. _Availability of the kill switch beats durability
+  of its record (ADR-0005 §4): a platform that cannot stop a container because
+  its database is slow has failed at the only thing that must never fail. The
+  gap is bounded and visible, which is the most an audit trail can do about it —
+  and the outbox is what makes "bounded" true across a restart (E-03, S-13)._
+  `Tests: TestKillPathDoesNotBlockOnEventStore,`
+  `TestHardStopProceedsWhenEventStoreUnavailable,`
+  `TestKillPathDoesNotBlockOnAppendLatency, TestKillOutboxIsDrainedAtStartup,
+  TestKillOutboxIsAppendOnly`.
 
 ### A1-8 · Read and stream guarantees
 
@@ -1464,8 +1619,12 @@ absorbed" — including every offline-node replay (ADR-0013).
   id order is a storage convenience, not an API guarantee), and not any payload
   field. A **descending** read (`seq` descending, newest first, for the live UI)
   MAY be offered as a second *declared* order; the direction is an explicit A4
-  request parameter, defaults to ascending, and a cursor is only valid in the
-  direction it was issued for (A1-8.2). Filtered reads preserve the same order
+  request parameter and defaults to ascending. Direction is a **request
+  parameter**, not a property of a cursor: a cursor issued for the other
+  direction is interpreted in the requested direction and yields a
+  well-defined (possibly empty) page. The cursor shape is **not** extended
+  (§5 conflict 9): its integrity problem is solved by A0-4.4's resolved-row
+  seek rule, not by a MAC (A1-8.2). Filtered reads preserve the same order
   (A1-8.3): a filter selects rows, it never reorders them.
 
 - **A1-8.2** Cursors and pagination (A0-4 in full: one `{"items":[…],
@@ -1476,9 +1635,14 @@ absorbed" — including every offline-node replay (ADR-0013).
     `event_id` (A0-4.4), canonicalized then base64url-unpadded. Cursors are
     opaque; a client replays them byte-for-byte.
   - **A cursor must resolve inside the requested engagement.** The platform
-    MUST look the cursor's `id` up in the requested chain; if it does not
-    resolve there, the response is `validation` (400) telling the client to
-    restart from the first page (A0-4.8). _Because `seq` is per engagement
+    MUST resolve the cursor's `id` **in the requested engagement** and MUST
+    derive the seek position from that row's `seq`, ignoring `k` for seeking; a
+    cursor whose `k` disagrees with the resolved row's `seq`, or whose `id` does
+    not resolve in this collection, is `validation` (400) telling the client to
+    restart from the first page (A0-4.4, A0-4.8). One oracle: A1-8.2 and A2-11.4
+    both say `validation`, never "an empty page or `validation`" (P-71, AM-4).
+    `Tests: TestCursorFromEngagementARejectedInB,`
+    `TestCursorWithInconsistentKAndIDRejected`. _Because `seq` is per engagement
     (A1-5.1), engagement A's cursor `{"k":412,…}` is a perfectly valid position
     in engagement B — replaying it would silently return B's rows from an
     unrelated point. Resolving the id turns a confusing cross-engagement replay
@@ -1660,7 +1824,7 @@ pgx importer is `store/postgres`, ADR-0010). Foundation imports only:
 // no I/O (DESIGN §1). Foundation imports only.
 package events
 
-// Kind is the closed event taxonomy (A1-3.1, 39 kinds). A0-8.5 spelling,
+// Kind is the closed event taxonomy (A1-3.1, 42 kinds). A0-8.5 spelling,
 // byte-exact comparison, no synonyms.
 type Kind string
 
@@ -1670,8 +1834,11 @@ const (
 	KindChainVerified      Kind = "chain_verified"
 	KindChainBreakDetected Kind = "chain_break_detected"
 	KindIntegrityOverride  Kind = "integrity_override"
+	KindArtifactReleased   Kind = "artifact_released" // A1-6.6, single-use override (A1-6.5)
 
 	// Engagement and run lifecycle.
+	KindEngagementCreated        Kind = "engagement_created" // seq 1 (A1-5.3 keeps genesis at seq 0)
+	KindEngagementClosed         Kind = "engagement_closed"
 	KindScopeChanged             Kind = "scope_changed"
 	KindEngagementPolicyChanged  Kind = "engagement_policy_changed"
 	KindRunStarted               Kind = "run_started"
@@ -1724,6 +1891,11 @@ const (
 	// Notification delivery (ADR-0012).
 	KindNotificationSent Kind = "notification_sent"
 )
+
+// HeadLogIntervalSeq is the A1-5.8 out-of-band emission interval: the head
+// hash is written to chain_head_trail at every verification, at every append
+// crossing this boundary, and at every run_ended / hard_stop_fired.
+const HeadLogIntervalSeq int64 = 100 // A1-5.8
 
 // ClientAppendable reports whether k is one of the three C kinds reachable
 // through events:append (A1-3.4, A1-7.4).
@@ -1849,7 +2021,18 @@ func HashEvent(preimage []byte) string // cjson.SHA256Hex
 // Served returns the canonical 17-key representation of a stored event:
 // decode the stored preimage, add the three chain fields, re-canonicalize
 // (A1-1.8, A1-5.7). Never re-marshal the decoded struct.
+//
+// Served(preimage, c) = cjson.With(preimage, map[string]any{"seq": c.Seq,
+// "prev_hash": c.PrevHash, "hash": c.Hash}) — the generic document only, never
+// a typed struct; it decodes with UseNumber() and re-emits every number's
+// literal text verbatim (A0-2.5), and rejects a preimage that fails A0-2 with
+// preimage_mismatch (A1-6.3).
 func Served(preimage []byte, c ChainBlock) ([]byte, error)
+
+// UnmarshalEvent decodes a served event document in two passes, both with
+// DisallowUnknownFields: the envelope keys give kind, then payload decodes into
+// that kind's concrete type (A1-4.1). No map[string]any intermediate (A0-2.5).
+func UnmarshalEvent(b []byte) (Event, error)
 
 // AppendRequest is the events:append body (A1-7.3): four keys, closed.
 // Everything else in an envelope is derived by the platform; a body carrying
@@ -1897,6 +2080,12 @@ type ChainHead struct {
 	IntegrityState   IntegrityState
 	VerifiedAt       string // "" until first verified
 	VerifiedHeadHash string
+
+	// A1-5.4 / A1-6.3 bookkeeping, written inside the append transaction.
+	LastRecordedAt   string    // the forward-clamp input of the next append (A1-5.4)
+	LastBreakSeq     int64     // break-dedup state (A1-6.3); 0 when no break recorded
+	LastBreakKind    BreakKind // "" when no break recorded
+	LastBreakEventID string    // the chain_break_detected row of the last break
 }
 
 // Verification triggers and break kinds — the closed enums of A1-3.3.
@@ -1919,6 +2108,7 @@ const (
 	BreakGenesisInvalid     BreakKind = "genesis_invalid"
 	BreakRowCountMismatch   BreakKind = "row_count_mismatch"
 	BreakEngagementMismatch BreakKind = "engagement_mismatch"
+	BreakHeadRegression     BreakKind = "head_regression" // A1-5.8, A1-6.3
 )
 
 // VerifyResult is what one walk returns (A1-6.1). The platform turns it into a
@@ -2294,9 +2484,11 @@ because `seq` starts at 0 and is dense (A1-5.4) — that equality is the
 ### 4.3 Normative chain vector
 
 Normative, like A0-2.17: the shared contract-test suite MUST reproduce these
-bytes and digests byte-exactly. Three events of one engagement chain, built
-with the A1-5.5 formula — genesis, a worker's `command_executed`, and a
-platform-composed `graph_node_quarantined`. The **preimage** column is the exact
+bytes and digests byte-exactly. Four events of one engagement chain, built
+with the A1-5.5 formula — genesis, a worker's `command_executed`, a
+platform-composed `graph_node_quarantined`, and a worker's `task_result` that
+locks the A0-2.6 number bound and the literal U+2028/U+2029/U+007F/non-BMP
+bytes. The **preimage** column is the exact
 byte string SHA-256 was computed over (A1-5.2: canonical JSON, the three
 excluded names absent); the **served** column is the A1-1.8 representation's
 length and digest, i.e. the preimage plus `seq`, `prev_hash` and `hash`
@@ -2307,6 +2499,7 @@ re-canonicalized.
 | 0 | `chain_genesis` | 428 | see below | `d65ade155302e33cf80bad7b9cbd98833373a7eed30c166510410eee0d6cfb4a` | 589 | `137b750dbc31c301ad87a5cc0406850ca24d887614cd589bf2d5781a36c80ad2` |
 | 1 | `command_executed` | 816 | see below | `a564115554e9764d74195f835155a19310c065553279c19c082fbbe726b6f60c` | 977 | `752bd8344fdb852e15105081f09d61dc3683336832f20c1324be81fafa40d2f2` |
 | 2 | `graph_node_quarantined` | 715 | see below | `05a06eabc89552dd1798ac918c65f10ab2c8c778cbda08d626929b6770785317` | 876 | `9d55ad66afe6e699012ed8a8fbd4f3859dc018358f2b81dfa49cadffd35a4e92` |
+| 3 | `task_result` | 702 | see below | `1cae22e3bba2c7cf2b15fc920aadbd1c45f18ce07675680c96a4ce46538215c1` | 863 | `0c79020c4ebce6315d2d29eeef75b3d301e929769de719804a078f730217b614` |
 
 ```
 seq 0 preimage:
@@ -2317,9 +2510,25 @@ seq 1 preimage:
 
 seq 2 preimage:
 {"actor":{"component":"graph","principal_id":"","type":"platform"},"engagement_id":"eng_01m1y2whfhgbz06ays6dxnvyws","event_id":"evt_01m1y2whfhk4m2nq8x7z1vb3rt","evidence_refs":[],"job_id":"job_01m1y2whfhbt69j0h0fbxepw90","kind":"graph_node_quarantined","node_id":"","occurred_at":"2026-09-07T14:11:52.007Z","occurred_claimed_at":"","payload":{"graph_node_id":"gn_01m1y2whfhq7z3m9x1c4vb8nrt","quarantine_kind":"blacklist_match","reason":"Host resolved by an in-scope DNS query and matched global blacklist range 10.99.0.0/16: recorded, never tested.","source_event_id":"evt_01m1y2whfhp17g0avdqztd2p3x"},"recorded_at":"2026-09-07T14:11:52.031Z","run_id":"run_01m1y2whfhnjx2am9103w0pnqw","task_id":"","untrusted":true}
+
+seq 3 preimage:
+{"actor":{"component":"","principal_id":"task_01m1y2whfh1txm57x8dn41r9hg","type":"worker"},"engagement_id":"eng_01m1y2whfhgbz06ays6dxnvyws","event_id":"evt_01m1y2whfhz8k3p5r7t9v1x3z5","evidence_refs":[],"job_id":"job_01m1y2whfhbt69j0h0fbxepw90","kind":"task_result","node_id":"","occurred_at":"2026-09-07T14:20:11.380Z","occurred_claimed_at":"2026-09-07T14:20:09.120Z","payload":{"command_count":3,"duration_ms":9007199254740991,"error_kind":"","result_summary":"Relay confirmed. Second line. DEL: done 😀","revert_event_ids":[],"status":"succeeded"},"recorded_at":"2026-09-07T14:20:11.400Z","run_id":"run_01m1y2whfhnjx2am9103w0pnqw","task_id":"task_01m1y2whfh1txm57x8dn41r9hg","untrusted":true}
 ```
 
-The three served envelopes (A1-1.8), pretty-printed here and canonical on the
+_Legend for the fenced block above (finding I-02): the `result_summary` of row 3
+carries four code points that are invisible or ambiguous in a terminal. They are
+written as the **literal characters**, not escapes, because A0-2.7 requires it:
+U+2028 LINE SEPARATOR = bytes `E2 80 A8` (3 B) · U+2029 PARAGRAPH SEPARATOR =
+bytes `E2 80 A9` (3 B) · U+007F DELETE = byte `7F` (1 B) · U+1F600 GRINNING FACE
+= bytes `F0 9F 98 80` (4 B). A raw U+2028/U+2029 makes a file's line count
+reader-dependent (`str.splitlines` and several editors break on them; `grep`
+and `awk` do not), so **the length and digest columns of the table are the
+authority, never the rendered line count**. Where this document prints these
+code points inside a table cell it writes the placeholder forms `<2028>`,
+`<2029>`, `<7F>` with this byte legend._
+
+
+The four served envelopes (A1-1.8), pretty-printed here and canonical on the
 wire — `prev_hash` of each row is the `hash` of the row before it, and row 0's
 is `ChainZero` (A1-5.5):
 
@@ -2404,11 +2613,106 @@ is `ChainZero` (A1-5.5):
 }
 ```
 
-_These are the three rows the A1-5.9 tamper matrix mutates. Note what the vector
+```json
+{
+  "actor": {
+    "component": "",
+    "principal_id": "task_01m1y2whfh1txm57x8dn41r9hg",
+    "type": "worker"
+  },
+  "engagement_id": "eng_01m1y2whfhgbz06ays6dxnvyws",
+  "event_id": "evt_01m1y2whfhz8k3p5r7t9v1x3z5",
+  "evidence_refs": [],
+  "job_id": "job_01m1y2whfhbt69j0h0fbxepw90",
+  "kind": "task_result",
+  "node_id": "",
+  "occurred_at": "2026-09-07T14:20:11.380Z",
+  "occurred_claimed_at": "2026-09-07T14:20:09.120Z",
+  "payload": {
+    "command_count": 3,
+    "duration_ms": 9007199254740991,
+    "error_kind": "",
+    "result_summary": "Relay confirmed. Second line. DEL: done 😀",
+    "revert_event_ids": [],
+    "status": "succeeded"
+  },
+  "recorded_at": "2026-09-07T14:20:11.400Z",
+  "run_id": "run_01m1y2whfhnjx2am9103w0pnqw",
+  "task_id": "task_01m1y2whfh1txm57x8dn41r9hg",
+  "untrusted": true,
+  "seq": 3,
+  "prev_hash": "05a06eabc89552dd1798ac918c65f10ab2c8c778cbda08d626929b6770785317",
+  "hash": "1cae22e3bba2c7cf2b15fc920aadbd1c45f18ce07675680c96a4ce46538215c1"
+}
+```
+
+_Row 3's `result_summary` contains the same four literal code points as its
+preimage (see the legend above): U+2028 = `E2 80 A8`, U+2029 = `E2 80 A9`,
+U+007F = `7F`, U+1F600 = `F0 9F 98 80`. The served length (863) and digest
+(`0c79020c…`) are the authority; the rendered block above is not
+line-count-stable. `duration_ms` = 9007199254740991 = 2^53−1, the A0-2.6
+maximum (16 digits) — the point of the row: it locks a number's literal token
+text through preimage → served → preimage (A0-2.5, F-01). A1-4.2 declares no
+upper bound for `duration_ms`; the 16-digit value is deliberately implausible:
+it exercises the A0-2.6 bound and F-01's literal-text rule._
+
+
+_These are the four rows the A1-5.9 tamper matrix mutates (rows 0–2 are the
+three-event clean chain T1–T17 name; row 3 extends it). Note what the vector
 locks: `event_id` sorts before `evidence_refs` (UTF-8 byte order, A0-2.4), the
 `actor` and `payload` objects are canonicalized recursively, `""` and `[]` and
 `false` are present rather than absent (A1-1.2), and `seq`/`prev_hash`/`hash`
 are absent from the preimage but present in the served form (A1-5.2, A1-1.8)._
+
+### 4.4 Contract tests (A1)
+
+The ids the shared contract-test suite MUST implement for A1, per clause. Each
+safety rule carries a positive and a negative id (AGENTS.md); the clause that
+owns the rule also names them, this subsection is the index.
+
+| Clause | Test ids |
+|---|---|
+| A1-1.2 / A1-4.8 | `TestNilCollectionNeverSerializesAsNull`, `TestPayloadsAreFlat` |
+| A1-2.1 | `TestActorComponentIsEmptyForNonPlatform`, `TestActorVocabularyMatchesA2` |
+| A1-2.3 | `TestClientCannotSupplyEnvelopeFields`, `TestUntrustedFlagCannotBeSupplied` |
+| A1-2.6 / A1-2.7 | `TestActorCannotBeForged`, `TestOrchestratorCannotClaimCommandExecuted`, `TestMachinePrincipalCannotReachIntegrityKinds` |
+| A1-3.1 / A1-3.5 | `TestKindListIs42AndClosed`, `TestUnknownKindIsRejectedOnWrite` |
+| A1-3.4 / A1-7.4 | `TestWorkerCannotAppendNonCKind` |
+| A1-4.2 | `TestApprovalFingerprintAndExpiryAreEqual`, `TestApprovalMetadataMismatchIsConflict`, `TestActionSpecArtifactIsChained`, `TestSingleUseApprovalRaceConsumesOnce`, `TestConsumedApprovalCannotSpawnAgain`, `TestContentHashMatchesGraphFingerprint`, `TestDedupCollapseStillEmitsEvent` |
+| A1-4.5 | `TestMaximalPayloadFitsCanonicalBound`, `TestCapsRejectWithSummaryTooLarge` |
+| A1-4.6 | `TestRedactedIsPlatformSetOnly`, `TestRedactedNotUsedForTruncation` |
+| A1-4.7 | `TestArraysSortedDedupedAtComposition`, `TestEvidenceRefsDerivation` |
+| A1-4.9 | `TestEventSecretFreeSerialization`, `TestSecretScanNamesFieldNotValue`, `TestNoSecretValueOrDigestInError` |
+| A1-4.10 | `TestServedEventIgnoresUnknownFields`, `TestAppendRejectsUnknownField` |
+| A1-4.11 / A1-4.12 | `TestNoTimeTimeInCanonicalizedTypes`, `TestUntrustedContextComputedNotSupplied`, `TestNoUntrustedTextInUnmarkedFields`, `TestUntrustedFlagMatchesStarredFields` |
+| A1-5.3 | `TestSecondGenesisIsRejected`, `TestAppendRefusedWithoutValidGenesis` |
+| A1-5.4 | `TestRecordedAtClampIsMonotone`, `TestRecordedAtClampBeyondBoundIsLogged`, `TestFailedAppendConsumesNoSeq`, `TestNoGlobalSequenceSharedAcrossEngagements`, `TestConcurrentAppendsProduceContiguousSeq`, `TestConcurrentAppendsAcrossEngagements` |
+| A1-5.7 | `TestServedBytesReproducible`, `TestServedRoundTripIsIdentity`, `TestEventRoundTrip` |
+| A1-5.8 | `TestHeadRegressionDetected`, `TestHeadTrailIsAppendOnly` |
+| A1-5.9 | `TestChainVectorDigests` (the §4.3 vector, byte-exact, rows 0–3) |
+| A1-6.2 | `TestReadDuringStartupWalkIsFlaggedUnverified`, `TestExportFromUnverifiedChainRefused`, `TestAppendRefusedBeforeStartupVerificationCompletes` |
+| A1-6.3 | `TestOneBreakEventPerRun`, `TestBreakDedupStateWrittenInSameTransaction` |
+| A1-6.4 | `TestExportBlockedOnFailedChain`, `TestInternalViewOverrideDoesNotAuthorizeExport`, `TestAppendsContinueOnFailedChain` |
+| A1-6.5 | `TestOverrideIsAdminOnly`, `TestOperatorCannotOverrideAnyBreak`, `TestSingleUseOverride`, `TestOverrideDiesAtNextBreak`, `TestArtifactReleasedNamesItsOverride` |
+| A1-6.6 | `TestExportComposesArtifactReleased`, `TestExportIntegrityStateIsNotTheChainStateEnum` |
+| A1-6.8 | `TestVerificationIdempotent`, `TestVerificationWritesNoOtherKind` |
+| A1-7.6 | `TestIdempotencyKeyReuseWithDifferentPayloadIsConflict`, `TestRetryCannotShiftClaimedTime`, `TestPayloadHashVector`, `TestDedupHitWritesNoEvent`, `TestPlatformDedupKeyIsNonEmptyPerKind`, `TestPlatformDedupKeyEmptyRejected` |
+| A1-7.10 | `TestValidationOrderIsDeterministic` |
+| A1-7.11 | `TestRetryReusesIdempotencyKey` |
+| A1-7.12 | `TestKillPathDoesNotBlockOnEventStore`, `TestHardStopProceedsWhenEventStoreUnavailable`, `TestKillPathDoesNotBlockOnAppendLatency`, `TestKillOutboxIsDrainedAtStartup`, `TestKillOutboxIsAppendOnly` |
+| A1-8.2 | `TestCursorFromEngagementARejectedInB`, `TestCursorWithInconsistentKAndIDRejected` |
+| A1-8.4 | `TestWorkerAndNodeHaveNoReadScope`, `TestSSENotReachableByMachinePrincipal` |
+| A1-8.5 | `TestSSEEmitAfterCommitInSeqOrder`, `TestSSEReplayDedupesByEventID`, `TestSSEResumeFromForeignSeqNeverServesUnrelatedPosition` |
+| A1-8.6 (the six cross-engagement negatives) | `TestEventIDFromAIsNotFoundInB`, `TestEventEngagementBReadNeverReturnsA`, `TestFilterWithForeignIDReturnsNothing`, `TestNoBulkEventReadSpansEngagements`, `TestSSEStreamNeverCarriesAnotherEngagement`, `TestCursorFromEngagementARejectedInB` |
+| A0-2.15 (via A1-5.5) | `TestGatingComparisonsAreConstantTime` |
+
+_The six ids on the A1-7.4/A1-2.x write path (`TestWorkerCannotAppendNonCKind`,
+`TestClientCannotSupplyEnvelopeFields`, `TestActorCannotBeForged`,
+`TestOrchestratorCannotClaimCommandExecuted`,
+`TestMachinePrincipalCannotReachIntegrityKinds`,
+`TestUntrustedFlagCannotBeSupplied`) are the negative half of AGENTS.md's
+safety-test rule for the write path; A1 does not reach `Frozen` without them
+(E-01)._
 
 ## 5. Traceability
 
@@ -2441,7 +2745,7 @@ are absent from the preimage but present in the served form (A1-5.2, A1-1.8)._
 | **adversarial A12** | cross-engagement leakage through implementation bugs | A1-2.5 (a foreign engagement is `notfound`, never `forbidden`), A1-5.1 (one chain per engagement), A1-5.2 (`engagement_id` is chainable → a stolen event cannot be re-labelled), A1-5.9 T6–T8 (splicing tests, `engagement_mismatch`), A1-7.10 (no multi-engagement write method), A1-8.2 (a cursor must resolve in the requested engagement), A1-8.4–8.6 (scoped reads + five negative tests) |
 | **adversarial A1** | prompt injection: untrusted content must not become configuration, and must not be able to erase its own trace | A1-4.4 (untrusted marking + never configuration + no laundering), A1-1.1/A1-5.2 (`untrusted` is inside the digest, so it cannot be flipped), A1-7.5/A1-3.3 (a rejected append is still chained as `action_blocked{append_rejected}`), A1-4.9 (secret scan), A1-8.5 (a stream carries the flag to every consumer) |
 | **adversarial A9** | classic web attacks on our own surface: hand-rolled auth, XSS via rendered evidence, SSRF via webhook URLs | A1-4.4 (autoescape every string field, including human-typed prose), A1-4.3 (no artifact bytes in a payload → nothing to render raw), A1-3.3 (`target_name`/`endpoint_name`: a URL is never stored), A1-8.4 (no read scope for machine principals), §6.9 (user/session audit events are a gap) |
-| **SPEC §5 steps 1–10** | the normative job lifecycle must be fully covered by the taxonomy | A1-3.7 (step → kinds map, incl. the two added kinds), A1-3.1 (closed and complete on day one), A1-3.5 (a new kind only when independently filterable) |
+| **SPEC §5 steps 1–10** | the normative job lifecycle must be fully covered by the taxonomy | A1-3.7 (step → kinds map, incl. the three added kinds), A1-3.1 (closed and complete on day one), A1-3.5 (a new kind only when independently filterable) |
 | **SPEC §6** | tool output and model prose are untrusted input, never configuration; out-of-scope discoveries are quarantined; enforcement is in the platform core | A1-4.4, A1-4.9, A1-7.1, A1-7.10, A1-3.3 (`graph_node_quarantined`, `quarantine_recomputed`, `scope_denied`, `blacklist_denied`) |
 | **SPEC §7** | every run snapshots its exact model config into the log (reproducibility); gateway is the single logging point | A1-3.3 (`model_config_snapshotted`, `run_started`, `llm_call`), A1-4.2 (`scope_snapshot_evidence_id` non-empty), A1-4.3 (config snapshot is an artifact reference) |
 | **SPEC §8** | the event log is the append-only spine; the graph and the evidence store hang off it | A1-7.2, A1-7.7 (ingest watermarks on `seq`/`event_id`), A1-2.8/A1-3.6 (provenance seam to A2), A1-1.7 (evidence references), A1-8.9 (consumer guarantees) |
@@ -2456,6 +2760,16 @@ are absent from the preimage but present in the served form (A1-5.2, A1-1.8)._
 | **A0-4.3** | each paginated collection declares a total, stable order from an immutable unique key | A1-8.1 (`seq` ascending; descending only as a second declared order), A1-8.2 (`k` = `seq`, `id` = `event_id`), A1-8.3 (filters never reorder), A1-5.4 (`seq` is immutable, dense, unique) |
 | **A0-5.6** | platform-recorded time is authoritative for ordering, verification, expiry and single-use checks | A1-1.4, A1-5.4 (`recorded_at` clamped non-decreasing), A1-6.1 (verification uses stored bytes and `seq`, not any client time), A1-8.1 (`occurred_claimed_at` orders nothing), A1-4.2 (`expires_at` platform-computed) |
 | **A0-5.7** | a client-supplied timestamp lives in a `*_claimed_at` field, never drives ordering/expiry/digests, and is stored next to `recorded_at` | A1-1.1 (`occurred_claimed_at`), A1-1.4, A1-4.12 (no payload timestamp is ever a claimed one), A1-5.2 (it **is** hashed, so it cannot be edited afterwards), A1-7.3 (the only client time in an append), A1-5.9 T3 |
+| **Adversarial T-01/T-02** | engagement lifecycle and artifact release are chainable facts, not side effects | A1-3.3 (`engagement_created` at `seq` 1, `engagement_closed`, `artifact_released`), A1-3.5 (additive), A1-3.7 (SPEC §5 steps 1 and 9), A1-4.2 (the three obligations rows), A1-6.6 (the export path composes `artifact_released`), §4.1 (three new `Kind` consts, 42 total), A1-4.5 (`TestMaximalPayloadFitsCanonicalBound` over 42 kinds), A1-4.4 (`TestKindListIs42AndClosed`) |
+| **Adversarial C-01/S-07 (§1 PO-1)** | override authority is admin-only and an `export` override is single-use | A1-6.5 (both blocks), A1-3.3 (`artifact_released.override_event_id`), A1-4.2 (`override_event_id` non-empty iff `failed_overridden`), A1-6.6 (release record uniqueness), §6 item 15 |
+| **Principal S-02/P-37 (§1 PO-3)** | the head hash is anchored out-of-band in a store the event role cannot rewrite | A1-5.8 (`chain_head_trail`, `REVOKE UPDATE, DELETE`, 100-`seq` interval), A1-3.3 (`break_kind:head_regression`), A1-6.3 (the `head_regression` row), A1-6.2 (startup compares against the trail), A1-6.6 (residual-risk wording), §4.1 (`HeadLogIntervalSeq = 100`), §6 item 16 |
+| **Principal P-13/P-32, adversarial T-07 (PAIR-T1)** | the `recorded_at` forward clamp is byte-wise, bounded, and its state lives on the chain head | A1-5.4 (byte-wise comparison, 1000 ms bound), A1-5.6 (`LastRecordedAt`, `LastBreakSeq`, `LastBreakKind`, `LastBreakEventID`), A1-6.3 (break-dedup state), §4.1 (`ChainHead`) |
+| **Principal P-09 (PAIR-R1)** | a refused append during the startup walk is retryable, not a defect | A1-7.5 (`timeout` row + the `internal` reservation), A1-7.11 (retry reuses `idempotency_key`; the one retryable write), A1-6.2 (`unverified`) |
+| **Principal P-97/E-03/S-13** | the kill path is durable without being blocking | A1-7.12 (durable outbox, `REVOKE UPDATE, DELETE`, startup drain, UI warning), A1-6.4 (the integrity-warning carrier), A1-6.5 (override tests), A1-4.2 (`container_killed.stop_event_id`) |
+| **Principal P-80** | a served event decodes in two passes with no `map[string]any` intermediate | §4.1 (`UnmarshalEvent`), A1-4.1 (per-kind payload type), A1-4.10 (read/write asymmetry), §4.4 (`TestEventRoundTrip`) |
+| **Principal P-33/P-08** | the dedup digest is defined once and every platform-composed row has a non-empty key | A1-7.6 (`PayloadHash` definition + worked vector, the per-kind deterministic key list), A1-7.10 (normalization runs first), §4.4 (`TestPayloadHashVector`) |
+| **Principal D-03 (PAIR-V1)** | number literal text and the literal U+2028/U+2029/U+007F/non-BMP bytes survive preimage → served → preimage | §4.3 row 3 (normative, 702 B / `1cae22e3…`, served 863 B / `0c79020c…`), A1-5.7 (`Served` = `cjson.With`, `UseNumber()`), A0-2.5/A0-2.7 (cited), A1-4.12 (`duration_ms` is `int64`) |
+| **Adversarial E-01/E-04** | the write path and the genesis/startup path each carry their negative tests | A1-2.3, A1-2.6, A1-2.7, A1-3.4, A1-7.4 (six write-path negatives), A1-5.3, A1-6.2, A1-7.11 (five genesis/startup negatives), §4.4 (index) |
 | **A0-6.6** | a canonicalized type evolves by adding kinds, not by reshaping fields; written canonical bytes are immutable | A1-4.10 (a new payload field or an 18th envelope key is breaking), A1-4.1, A1-3.5, A1-1.6/A1-7.2 (annotation is a new event), A1-3.8 + A1-3.3 (the two kinds added for A2 are additive) |
 | **A0-6.1/6.2/6.3** | read: ignore unknown fields, preserve unknown enums; write: reject both | A1-4.10, A1-7.3, A1-7.5, A1-7.10 steps 3/5/7, A1-3.1, A1-4.12 |
 | **A0-7.7** | every capped field class gets exactly one mechanism, recorded in the owning contract | A1-4.5 (mechanism table: **R for every A1 class, T for none**, with the derivation of the 32768 B document invariant), A1-3.2 (`(N)` notation), A1-7.5 (`summary_too_large`), §6.3 + AM-2 |
@@ -2514,6 +2828,16 @@ amendment requests (AM-1…AM-4) is independent of A2's.
    re-append is blind. Both need the same pattern corpus, which must ship with
    the contract tests. **PO confirm** (aligned with A2 §6.10 — the two
    contracts should not answer this differently)._
+
+   **Ruled once for both contracts (PO confirm): reject, never redact.** A
+   secret-pattern hit (A2-9.4 rule ids) is a hard reject — `validation` (400)
+   naming the field and the rule id, the value never echoed in whole, in part or
+   as a digest (A0-3.4) — and the rejection is chained (`action_blocked`).
+   Redaction was rejected: a false positive would silently destroy a worker's
+   only report of what it ran, and `redacted:true` (A1-4.6) means platform
+   redaction, never rejection. The false-positive risk is controlled by shipping
+   the A2-9.4 rule table with the planted-secret corpus. A1 §6.4 and A2 §6.10
+   are the same question and MUST NOT be answered differently.
 5. **A1-6.4 — appends continue on a failed chain.** Recommend: exports blocked,
    internal views flagged, **appends keep working**, blast radius one
    engagement. Alternative: fail closed and refuse appends until the break is
@@ -2558,7 +2882,7 @@ amendment requests (AM-1…AM-4) is independent of A2's.
    planner write prose into the audit spine that no C kind covers. A1-2.6's run
    binding still applies if A5 ever grants either. **PO confirm** (A5 turns this
    into the exclusion list)._
-9. **A1-3 gap — user and session audit events are not in the taxonomy.** The 39
+9. **A1-3 gap — user and session audit events are not in the taxonomy.** The 42
    kinds cover the engagement/run/agent/integrity spine. They do **not** cover
    authentication and administration: login success/failure, TOTP failure,
    session creation/revocation, password change, role change, engagement
@@ -2573,6 +2897,15 @@ amendment requests (AM-1…AM-4) is independent of A2's.
    assumption is currently unowned, and A1 is the wrong home for it because the
    chain scope is the engagement. **PO decision on ownership**, flagged here so
    it is not lost (A1 §2 lists it as a gap)._
+
+   Ownership split applied for the Freeze: authentication, session, credential
+   and role audit are **not** A1 kinds — they have no natural `engagement_id`
+   (A1-5.1) and belong to A5's platform-scoped audit store. Two exceptions are
+   engagement-scoped and are chained here: a global-blacklist mutation is
+   composed as `scope_changed` into every affected engagement chain (A1-3.3,
+   adversarial C-04), and engagement operator assignment is a known gap that A5
+   MUST close by adding `engagement_assignment_changed` additively (A1-3.5) —
+   see §6 item 17.
 10. **A1-8.5 — SSE `id:` is the decimal `seq`.** Resume via `Last-Event-ID` is
     then a chain position: gap-free, ordered, and checkable by the consumer
     against the dense `seq` guarantee (A1-8.1). Alternative: use `event_id`,
@@ -2609,15 +2942,52 @@ amendment requests (AM-1…AM-4) is independent of A2's.
     Report layout itself belongs to the report session. **PO confirm**._
 14. **A1-3.3 / A1-3.8 — the additive taxonomy changes this revision made.**
     Two kinds (`quarantine_recomputed` for A2-8.5, `graph_edge_retracted` for
-    A2-3.9) and two enum values (`chain_break_detected.break_kind:
+    A2-3.9), three more added at the Freeze (adversarial T-01/T-02:
+    `engagement_created`, `engagement_closed`, `artifact_released` — see
+    A1-3.5) and two enum values (`chain_break_detected.break_kind:
     engagement_mismatch` for the A12 splicing case, `action_blocked.reason:
     append_rejected` so a refused append stays observable), taking the closed
-    list from 37 to 39 kinds. One request from A2 was **corrected** rather than
-    granted: no `node_superseded` kind, because `graph_node_written` +
+    list from 37 to **42** kinds. One request from A2 was **corrected** rather
+    than granted: no `node_superseded` kind, because `graph_node_written` +
     `graph_edge_written{supersedes}` already record it and a third encoding
-    would be a third source of truth. _All four additions are additive under
+    would be a third source of truth. _All additions are additive under
     A0-6.5 and cost nothing before Freeze; after Freeze a new kind is still
     additive, so none of this is a one-way door. **PO confirm**._
+
+    **PO confirm — operator release of quarantine is removed.**
+    `operator_release` is deleted from A1's `quarantine_kind` enum and A2
+    provides no release operation: an `out_of_scope` node is released **only**
+    by an operator scope change and the recomputation it causes (A2-8.5,
+    ADR-0016 §2 — an out-of-scope node can never be a target of a planned
+    action). `operator_quarantine` (tightening) is kept, and a `blacklisted`
+    node is never releasable. If the product owner wants a manual release it
+    MUST be a new ADR amending ADR-0016 §2 and MUST require the target to be
+    inside the widened allowlist at release time.
+
+15. **A1-6.5 — override authority and lifetime (PO decision, not
+    confirmation).** The clause now narrows Q11's "explicit operator override
+    allowed" to **admin-role only** (an operator-scoped user, including one
+    assigned to the engagement, MUST NOT override any break) and makes an
+    `scope:"export"` override **single-use**, one override per released
+    artifact. Both narrowings are stricter than the literal Q11 wording; the
+    product owner MUST sign them before A1 flips to Frozen (adversarial C-01,
+    S-07; insider threat A15).
+16. **A1-5.8 / §6.7 — out-of-band head anchoring (PO decision).** The Freeze
+    ships the in-platform anchor only: an append-only `chain_head_trail` table
+    (`REVOKE UPDATE, DELETE`) plus `break_kind:"head_regression"`. Residual
+    risk accepted unless the PO also approves pushing
+    `(engagement_id, head_seq, head_hash)` over the ADR-0012 §3 signed webhook:
+    an attacker with both store-write and log-write access on the same host can
+    forge history (default Docker deployment, SPEC §10). This residual MUST be
+    printed into A1-6.6's export wording if the webhook anchor is declined — it
+    is, see A1-6.6.
+17. **A1 §6.9 — user/session audit ownership (PO decision).** A1 chains
+    engagement-scoped facts only; authentication, session and role audit belong
+    to A5 in a platform-scoped store. **Known debt accepted at Freeze:**
+    engagement operator assignment (who may approve, ADR-0012 §1) is unaudited
+    in v1 until A5 adds `engagement_assignment_changed` additively (A1-3.5);
+    an insider admin self-assigning and then approving is detectable only in
+    A5's store (adversarial C-08).
 
 ### A0 amendment requests
 
