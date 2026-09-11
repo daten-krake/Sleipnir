@@ -12,6 +12,7 @@
 | **Depends on** | A0 in full — ids (A0-1), canonical JSON (A0-2), error kinds (A0-3), pagination (A0-4), time (A0-5), versioning (A0-6), size caps (A0-7), field conventions (A0-8). A1 restates no A0 rule; it cites it. |
 | **External refs** | FIPS 180-4 (SHA-256) · RFC 8785 via A0-2.2 · RFC 3339 via A0-5.1 |
 | **Authority** | ADR > SPEC > DESIGN > contract. A clause here that contradicts an Accepted ADR is a defect in this document. |
+| **Review provenance** | Clause rationale may cite review finding ids — `P-nn` (buildability and cross-document consistency) and `C-nn`/`S-nn`/`F-nn`/`D-nn`/`T-nn`/`E-nn` (adversarial) — from `docs/reviews/2026-09-11-contract-review-principal.md` and `docs/reviews/2026-09-11-contract-review-adversarial.md`; the merged fix plan is `docs/reviews/2026-09-11-contract-fix-plan.md`. Those ids are audit trail, not normative references: no clause depends on them. |
 
 ## 2. Scope
 
@@ -131,8 +132,6 @@ kind (A1-3.5).
   `type="platform"`). A1-3.3's `actor (type, component)` column gives the
   literal pair for every kind.
 
-  _BLOCK-A1-08 (⧉ byte-identical to A2 BLOCK-A2-10's mapping table):_
-
   | A1 `actor.type` | A2 `principal_kind` | id shape (A0-1.2) |
   |---|---|---|
   | `platform` | `platform` | `""` |
@@ -162,8 +161,7 @@ kind (A1-3.5).
   across two contracts. Every user-composed A1 kind (`actor.principal_id`, A1-2.2)
   and every A2 operator write (`user_id`, A2-5.3) validates against it. The product
   owner MUST confirm the prefix spelling before Frozen; it is additive-only
-  afterwards (A0-1.10). The identical sentence stands in A0 §6 and A2 §6.2
-  (BLOCK-PO8).
+  afterwards (A0-1.10). The identical sentence stands in A0 §6 and A2 §6.2.
 
 - **A1-2.3** Only the platform composes events. `actor` is stamped from the
   authenticated principal and the request context; a client MUST NOT supply
@@ -328,7 +326,6 @@ For every non-platform row `actor.component` is `""`. `actor` is inside the
 digest (A1-5.2).
 `Tests: TestActorComponentIsEmptyForNonPlatform`
 
-_BLOCK-A1-05 (⧉ identical decision content to A2 BLOCK-A2-08):_
 `action_blocked.reason` gains `target_quarantined` (additive): a spawn or action
 request cited a `gn_` id whose node is quarantined; refused **before** approval
 routing (A2-8.3, ADR-0018 §2). `quarantine_recomputed.trigger` is the closed list
@@ -336,7 +333,6 @@ routing (A2-8.3, ADR-0018 §2). `quarantine_recomputed.trigger` is the closed li
 the recomputations a new node or a new edge touching a quarantined node causes
 (A2-8.2).
 
-_BLOCK-A1-06 (⧉ identical decision content to A2 BLOCK-A2-04):_
 `graph_node_written` carries `content_hash:64hex` (the A2-4.6 fingerprint of the
 written node) and `dedup_hit:bool`; `graph_edge_written` carries `dedup_hit:bool`
 (edges have no fingerprint). A dedup collapse (A2-4.7) MUST still emit the event with
@@ -371,7 +367,6 @@ absorbed" — including every offline-node replay (ADR-0013).
   `action_spec_evidence_id` and `risk_tier` as opaque values — **A7 owns the
   *content* of these fields, A1 their *presence*.**
 
-  _BLOCK-A1-04 (new bullet — ⧉ identical decision content to A2 BLOCK-A2-12):_
   Quarantine vocabulary: A2 owns the **state** vocabulary (`quarantine_reason`:
   `out_of_scope`, `blacklisted`); A1 owns the **occurrence** vocabulary
   (`quarantine_kind`: `out_of_scope_discovery`, `blacklist_match`,
@@ -384,8 +379,8 @@ absorbed" — including every offline-node replay (ADR-0013).
   `Tests: TestQuarantineReasonIsDerivedFromKindMapping,`
   `TestOperatorReleaseRejectedAsUnknownEnumValue`.
 
-  _BLOCK-A2-14 (⧉ byte-identical table; A2-1.6 owns it, cited here so the A1↔A2
-  field mapping reads the same from either document):_
+  _A2-1.6 owns this table; it is reproduced here so the A1↔A2 field mapping reads
+  the same from either document._
   One value, one name platform-wide (A0-3.6): a graph node is `graph_node_id` and a
   graph edge is `graph_edge_id` in every JSON document, payload, error body and log
   attribute; `node_id` remains the remote agent node (`slp_node_`, Q9). A2's served
@@ -402,7 +397,7 @@ absorbed" — including every offline-node replay (ADR-0013).
   The originating worker/orchestrator of a graph write is **not** the event's
   `actor`: `graph_node_written.actor` is `(platform, "graph")` and the producer is
   carried by the node's `provenance.principal_kind` (A2-5.3). The two are expected
-  to differ — copying one into the other is a defect (PAIR-A2).
+  to differ — copying one into the other is a defect.
   `Tests: TestFieldNameMappingIsTotal, TestPrincipalKindIsNotCopiedFromActor`.
 - **A1-3.7** SPEC §5 step coverage (completeness check, no normative force of
   its own): 1 → `engagement_created`, `chain_genesis`, `scope_changed`,
@@ -606,7 +601,7 @@ absorbed" — including every offline-node replay (ADR-0013).
   over-cap summary costs a retry, never evidence. A0-7.3 measurement
   (decoded UTF-8 bytes of the value) and A0-7.8 (enforcement at platform
   ingest, never in the producer) apply unchanged. **PO confirm** (§6.3).
-  The **values** of every cap above live in the A0-7.1 registry (PAIR-N1, AM-2):
+  The **values** of every cap above live in the A0-7.1 registry (AM-2):
   A1 cites the registry names — `ProseLongMaxBytes`, `ProseMediumMaxBytes`,
   `TargetMaxBytes`, `LabelMaxBytes`, `ToolVersionMaxBytes`, `KindNameMaxBytes`,
   `DigestMaxBytes`, `EvidenceRefsMax`, `EventRefsMax`, `ExitCodeMin`,
@@ -692,9 +687,8 @@ absorbed" — including every offline-node replay (ADR-0013).
     **rule id** — never echoing the value, a prefix of it, or its digest
     (A2-9.5). The rejection stays observable as
     `action_blocked{reason:"append_rejected"}` (A1-7.5). Reject-vs-redact is
-    **ruled**: reject, never redact (§6.4, BLOCK-PO6).
+    **ruled**: reject, never redact (§6.4).
 
-    _BLOCK-A1-07 (⧉ identical decision content to A2 BLOCK-A2-07):_
     The pattern set is A2-9.4's rule table and nothing else: rule ids live in exactly
     one document, and an error MUST name the field and the rule id, never the value, a
     prefix of it, or a digest of it (A0-3.4, A2-9.5). The scan is a **filter, not a
@@ -709,7 +703,7 @@ absorbed" — including every offline-node replay (ADR-0013).
     credential value* MUST NOT be stored in any event field.
   - Cloud egress: the gateway's exclusion (ADR-0020 §4) is the enforcement
     point and is recorded as `llm_call.excluded_secret_count`; the scan above is
-    a filter, not a guarantee (BLOCK-A1-07), so no read path, stage view (A3),
+    a filter, not a guarantee, so no read path, stage view (A3),
     report or SSE frame may be relied on to be secret-free by construction.
   - Negative tests (shared suite, "secret-free serialization"):
     `TestEventSecretFreeSerialization` — for a corpus of appends with planted
@@ -902,7 +896,7 @@ absorbed" — including every offline-node replay (ADR-0013).
     the compensating control. The clamp input is `ChainHead.LastRecordedAt`
     (A1-5.6). _A monotone `recorded_at` is what makes "the log shows X before Y"
     a statement an auditor can rely on; the bound is what keeps a stuck clock
-    from being laundered into a plausible timeline (PAIR-T1, A0-5.4)._
+    from being laundered into a plausible timeline (A0-5.4)._
     `Tests: TestRecordedAtClampIsMonotone, TestRecordedAtClampBeyondBoundIsLogged`.
   - `occurred_at` and `occurred_claimed_at` are **not** clamped and are not
     monotone: they describe the occurrence, not the commit (A1-1.4).
@@ -958,7 +952,7 @@ absorbed" — including every offline-node replay (ADR-0013).
   source of bytes, no possibility of the stored copy and the served copy
   drifting. `Served(preimage, c)` =
   `cjson.With(preimage, map[string]any{"seq": c.Seq, "prev_hash": c.PrevHash,`
-  `"hash": c.Hash})` (PAIR-C1, A0 §4), operating on the generic document only;
+  `"hash": c.Hash})` (A0 §4), operating on the generic document only;
   it MUST decode with `UseNumber()` and re-emit every number's literal text
   verbatim (A0-2.5, F-01), and MUST reject a preimage that fails A0-2 with
   `preimage_mismatch` (A1-6.3). U+2028/U+2029 are literal in the served bytes
@@ -1569,7 +1563,7 @@ absorbed" — including every offline-node replay (ADR-0013).
   terminal by A0-3.11 MUST NOT be retried except where its owning contract
   declares the write retryable under `internal` with a deduplication key — A1
   declares exactly that one write retryable, `events:append` under A1-7.6
-  (PAIR-R1, A0-3.11).
+  (A0-3.11).
   Two preconditions are hard gates, both fail-closed: a chain with no valid
   genesis MUST NOT accept appends (A1-5.3) and a chain whose startup
   verification has not completed MUST NOT accept appends (A1-6.2). The first
@@ -2763,12 +2757,12 @@ safety-test rule for the write path; A1 does not reach `Frozen` without them
 | **Adversarial T-01/T-02** | engagement lifecycle and artifact release are chainable facts, not side effects | A1-3.3 (`engagement_created` at `seq` 1, `engagement_closed`, `artifact_released`), A1-3.5 (additive), A1-3.7 (SPEC §5 steps 1 and 9), A1-4.2 (the three obligations rows), A1-6.6 (the export path composes `artifact_released`), §4.1 (three new `Kind` consts, 42 total), A1-4.5 (`TestMaximalPayloadFitsCanonicalBound` over 42 kinds), A1-4.4 (`TestKindListIs42AndClosed`) |
 | **Adversarial C-01/S-07 (§1 PO-1)** | override authority is admin-only and an `export` override is single-use | A1-6.5 (both blocks), A1-3.3 (`artifact_released.override_event_id`), A1-4.2 (`override_event_id` non-empty iff `failed_overridden`), A1-6.6 (release record uniqueness), §6 item 15 |
 | **Principal S-02/P-37 (§1 PO-3)** | the head hash is anchored out-of-band in a store the event role cannot rewrite | A1-5.8 (`chain_head_trail`, `REVOKE UPDATE, DELETE`, 100-`seq` interval), A1-3.3 (`break_kind:head_regression`), A1-6.3 (the `head_regression` row), A1-6.2 (startup compares against the trail), A1-6.6 (residual-risk wording), §4.1 (`HeadLogIntervalSeq = 100`), §6 item 16 |
-| **Principal P-13/P-32, adversarial T-07 (PAIR-T1)** | the `recorded_at` forward clamp is byte-wise, bounded, and its state lives on the chain head | A1-5.4 (byte-wise comparison, 1000 ms bound), A1-5.6 (`LastRecordedAt`, `LastBreakSeq`, `LastBreakKind`, `LastBreakEventID`), A1-6.3 (break-dedup state), §4.1 (`ChainHead`) |
-| **Principal P-09 (PAIR-R1)** | a refused append during the startup walk is retryable, not a defect | A1-7.5 (`timeout` row + the `internal` reservation), A1-7.11 (retry reuses `idempotency_key`; the one retryable write), A1-6.2 (`unverified`) |
+| **Principal P-13/P-32, adversarial T-07** | the `recorded_at` forward clamp is byte-wise, bounded, and its state lives on the chain head | A1-5.4 (byte-wise comparison, 1000 ms bound), A1-5.6 (`LastRecordedAt`, `LastBreakSeq`, `LastBreakKind`, `LastBreakEventID`), A1-6.3 (break-dedup state), §4.1 (`ChainHead`) |
+| **Principal P-09** | a refused append during the startup walk is retryable, not a defect | A1-7.5 (`timeout` row + the `internal` reservation), A1-7.11 (retry reuses `idempotency_key`; the one retryable write), A1-6.2 (`unverified`) |
 | **Principal P-97/E-03/S-13** | the kill path is durable without being blocking | A1-7.12 (durable outbox, `REVOKE UPDATE, DELETE`, startup drain, UI warning), A1-6.4 (the integrity-warning carrier), A1-6.5 (override tests), A1-4.2 (`container_killed.stop_event_id`) |
 | **Principal P-80** | a served event decodes in two passes with no `map[string]any` intermediate | §4.1 (`UnmarshalEvent`), A1-4.1 (per-kind payload type), A1-4.10 (read/write asymmetry), §4.4 (`TestEventRoundTrip`) |
 | **Principal P-33/P-08** | the dedup digest is defined once and every platform-composed row has a non-empty key | A1-7.6 (`PayloadHash` definition + worked vector, the per-kind deterministic key list), A1-7.10 (normalization runs first), §4.4 (`TestPayloadHashVector`) |
-| **Principal D-03 (PAIR-V1)** | number literal text and the literal U+2028/U+2029/U+007F/non-BMP bytes survive preimage → served → preimage | §4.3 row 3 (normative, 702 B / `1cae22e3…`, served 863 B / `0c79020c…`), A1-5.7 (`Served` = `cjson.With`, `UseNumber()`), A0-2.5/A0-2.7 (cited), A1-4.12 (`duration_ms` is `int64`) |
+| **Principal D-03** | number literal text and the literal U+2028/U+2029/U+007F/non-BMP bytes survive preimage → served → preimage | §4.3 row 3 (normative, 702 B / `1cae22e3…`, served 863 B / `0c79020c…`), A1-5.7 (`Served` = `cjson.With`, `UseNumber()`), A0-2.5/A0-2.7 (cited), A1-4.12 (`duration_ms` is `int64`) |
 | **Adversarial E-01/E-04** | the write path and the genesis/startup path each carry their negative tests | A1-2.3, A1-2.6, A1-2.7, A1-3.4, A1-7.4 (six write-path negatives), A1-5.3, A1-6.2, A1-7.11 (five genesis/startup negatives), §4.4 (index) |
 | **A0-6.6** | a canonicalized type evolves by adding kinds, not by reshaping fields; written canonical bytes are immutable | A1-4.10 (a new payload field or an 18th envelope key is breaking), A1-4.1, A1-3.5, A1-1.6/A1-7.2 (annotation is a new event), A1-3.8 + A1-3.3 (the two kinds added for A2 are additive) |
 | **A0-6.1/6.2/6.3** | read: ignore unknown fields, preserve unknown enums; write: reject both | A1-4.10, A1-7.3, A1-7.5, A1-7.10 steps 3/5/7, A1-3.1, A1-4.12 |

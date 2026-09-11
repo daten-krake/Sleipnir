@@ -11,6 +11,7 @@
 | **Implements** | ADR-0016 §1–§5 · ADR-0005 §2/§3/§5 · ADR-0009 §1–§2 · ADR-0019 §2/§5 · ADR-0020 §3–§4 · SPEC §6, §8, C8 · Q1, Q2, Q3, Q4, Q5, Q6 (+ Q6 worker addendum) · adversarial A1, A12 |
 | **Depends on** | A0 (**Draft** at the time of writing; every work package below is gated on the A0/A1/A2 Freeze PR) — ids A0-1.2, canonical JSON A0-2, error kinds A0-3, paging A0-4, time A0-5, unknown fields A0-6, size caps A0-7, field conventions A0-8 · A1 (event envelope fields consumed by provenance, A2-5.4) |
 | **Authority** | ADR > SPEC > DESIGN > contract. A clause here that contradicts an Accepted ADR is a defect in this document. A0 owns every cross-cutting convention; A2 cites A0 clause ids instead of restating them, and requests amendments only in §6. |
+| **Review provenance** | Clause rationale may cite review finding ids — `P-nn` (buildability and cross-document consistency) and `C-nn`/`S-nn`/`F-nn`/`D-nn`/`T-nn`/`E-nn` (adversarial) — from `docs/reviews/2026-09-11-contract-review-principal.md` and `docs/reviews/2026-09-11-contract-review-adversarial.md`; the merged fix plan is `docs/reviews/2026-09-11-contract-fix-plan.md`. Those ids are audit trail, not normative references: no clause depends on them. |
 
 ## 2. Scope
 
@@ -88,8 +89,8 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   | `to_graph_node_id` | `Edge.TargetID` / `target_id` |
   | `supersedes_graph_node_id` | `Node.SupersedesID` / `supersedes_id` |
 
-  This table is the A1↔A2 field mapping (PAIR-M1): A1-3.6 cites it and A1-2.1
-  carries the identity half (BLOCK-A2-10). `content_hash` is unaffected — no
+  This table is the A1↔A2 field mapping: A1-3.6 cites it and A1-2.1 carries the
+  identity half. `content_hash` is unaffected — no
   `id` key appears in A2-4.6.
 - **A2-1.7** Value types are closed: UTF-8 strings (A0-2.3, capped per A2-7),
   integers within A0-2.6, booleans (A0-8.8), closed enum strings (A0-8.5),
@@ -554,7 +555,7 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
 
   Every constant named without "(A2-local)" is a row of the A0-7.1 registry
   (AM-2 granted): **A2 declares no value of its own for it and cites the A0
-  name** (PAIR-N1); the numbers in the Cap column are restated for readability
+  name**; the numbers in the Cap column are restated for readability
   only, and A0-7.1 is the source of truth. `EvidenceIDsMax` is gone — both
   documents cite `EvidenceRefsMax`. A2-local constants are new field classes
   under A0-7.7's delegation, not changes to the Q4 constants (A0-7.2).
@@ -774,7 +775,7 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
 - **A2-9.5** Secrets never appear in errors or logs (ADR-0019 §5, A0-3.7):
   an error `message`, an error `attrs` entry and any `slog` record MUST NOT
   contain a rejected secret value **in whole, in part or as a digest** — not
-  the value, not a prefix of it, not its hash (A0-3.4's exception, PAIR-X1).
+  the value, not a prefix of it, not its hash (A0-3.4's exception).
   The message names the field, the rule id (A2-9.4) and the byte length only.
 - **A2-9.6** What a worker MUST do with a captured secret instead (Q6 worker
   addendum — the worker is report-only and has **no** graph access): upload it
@@ -907,7 +908,7 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
     rejected `notfound`, and no edge row is created in either engagement.
   - `TestCursorFromEngagementARejectedInB` — replaying A's cursor (A0-4.4) on a
     B-scoped list yields **`validation` (400)**, never A data and never a
-    silently empty page (A1-8.2 is the same oracle, PAIR-K1); authorization is
+    silently empty page (A1-8.2 is the same oracle); authorization is
     re-derived per page, never from the cursor.
   - `TestNoBulkReadSpansEngagements` — reflection/endpoint audit over the A4
     route table and the store seam: no graph read accepts more than one
@@ -1051,7 +1052,7 @@ const (
 	QuarantineBlacklist  QuarantineReason = "blacklisted"
 )
 
-type PrincipalKind string // A2-5.3: A1-2.1's list verbatim (PAIR-A1).
+type PrincipalKind string // A2-5.3: A1-2.1's list verbatim.
 
 const (
 	PrincipalPlatform     PrincipalKind = "platform"
@@ -1095,7 +1096,7 @@ type AttrValue struct {
 func (v AttrValue) MarshalJSON() ([]byte, error)
 func (v *AttrValue) UnmarshalJSON(b []byte) error
 
-// Cap constants: A2 declares none of the A0-7.1 registry values (PAIR-N1) —
+// Cap constants: A2 declares none of the A0-7.1 registry values —
 // ToolVersionMaxBytes (64), EvidenceRefsMax (8), MaxSupersedeChain, AttrsMaxKeys,
 // AttrKeyMaxBytes, AttrValueMaxBytes, AttrsTotalMaxBytes, AddressesMax,
 // NodeSummaryMaxBytes and FindingSummaryMaxBytes come from internal/caps (A0-7.1).
@@ -1588,7 +1589,7 @@ appears in both tables, with different ids in each).
 | A2-10.8 | `TestRejectedWriteIsStillChained` |
 | A2-11.4 | `TestGraphNodeIDFromAIsNotFoundInB`, `TestCursorFromEngagementARejectedInB`, `TestNodeDedupDoesNotSpanEngagements`, `TestEdgeDedupDoesNotSpanEngagements`, `TestNoCrossEngagementEdge`, `TestNoBareNodeIDInGraphDocuments` |
 
-Single-oracle rulings (PAIR-K1 / AM-4 — one name, one oracle, no "either" in
+Single-oracle rulings (AM-4 — one name, one oracle, no "either" in
 an assertion):
 
 - `TestGraphNodeIDFromAIsNotFoundInB` — the **only** oracle is: `notfound`
@@ -1643,7 +1644,7 @@ A2-10.6 (`TestGraphSeamHasExactlyFourMutationMethods` /
 | **ADR-0016 §2** | scope alignment enforced on the graph: out-of-scope discoveries recorded as quarantined, never actionable; blacklist not representable as an actionable target; policy checks in the platform core on planning reads | A2-8.1–8.5, A2-10.1, A2-12.4/12.5 |
 | **ADR-0016 §2 + ADR-0005 §3 (per-kind evaluation)** | quarantine is derived from a **closed per-kind identity field set**, propagates one hop, is recomputed on a closed trigger list, and is never derived from prose; a target is cited by `gn_` id, never by a worker-supplied string | A2-8.2 (matched fields, derivation, triggers, `QuarantineDecider`), A2-8.3, A2-10.2 (13a/13b/13c) |
 | **ADR-0013 (offline buffering) + A0-3.11** | a replayed observation is idempotent and still attributable: the dedup collapse appends a provenance entry, a repeated `event_id` appends nothing, and the collapse is chained | A2-4.7 (bounded list ≤ 8, ordered by the A1 event `seq`, replay guard), A2-5.1, A2-5.6 (`verified` needs an independent second entry), A2-3.4, A2-10.2 (`dedup_hit`) |
-| **A1-2.1 / A1-3.3 (PAIR-A1, PAIR-A2, PAIR-M1)** | one principal vocabulary and one name per value platform-wide | A2-5.3 (five kinds, `operator`→`user`, `operator_id`→`user_id`, `principal_kind` ≠ the event `actor`), A2-2.8, A2-1.6 (the A1↔A2 mapping table) |
+| **A1-2.1 / A1-3.3** | one principal vocabulary and one name per value platform-wide | A2-5.3 (five kinds, `operator`→`user`, `operator_id`→`user_id`, `principal_kind` ≠ the event `actor`), A2-2.8, A2-1.6 (the A1↔A2 mapping table) |
 | **A1-4.7 / A1 §4.3 / A0-2.15–2.16** | arrays are sorted and deduplicated **before** canonicalization, and a published fingerprint vector is normative data the shared suite reproduces byte-exactly | A2-4.6, §4.2 (F1, F1-R, F3, S1), A2-4.8 (recompute from stored bytes) |
 | **A0-1.2 / A0 §4 `KindUser` (AM-1)** | a human principal has a registered id shape, so operator attribution is validatable | A2-5.3 (`user_id` = `usr_`), A2-8.7, §6 item 2 |
 | **DESIGN §1 / DESIGN §4** | the domain layer imports foundation only; an interface is declared at its consumer; a constructor never returns a half-built value | §4 (`QuarantineDecider` declared in `internal/graph`, `NodeDraft`→`NewNode`→`PendingNode`→`WriteNode`), A2-8.2, A2-10.6, A2-11.1 |
@@ -1702,8 +1703,8 @@ triage and are recorded with their rulings, not left as open asks.
    `KindUser`, so a `principal_kind: user` entry's `user_id` validates per
    A0-1.5; operator corrections and A2-8.7 report exclusion are unblocked and
    nothing here waits on A5 (A0 owns id *shapes* — delegating the spelling
-   would split A0-1.5 validation across two contracts). BLOCK-PO8 in A2-5.3 is
-   the normative text. What remains is a **PO confirm** of the prefix spelling
+   would split A0-1.5 validation across two contracts). The AM-1 note in A2-5.3
+   is the normative text. What remains is a **PO confirm** of the prefix spelling
    only, and it is additive-only afterwards (A0-1.10). The former reading of
    this item — "`operator_id` has no id shape, so `principal_kind: operator`
    writes MUST be refused" — is withdrawn: the enum value is `user` and the
@@ -1769,20 +1770,21 @@ triage and are recorded with their rulings, not left as open asks.
     A3 may rely on (A2-12.2). The 500-node/64 KiB composition rule stays with
     A3 and the PO escalation already recorded in A0 §6.14.
 12. **A2-8.5 — blacklisted discovery: recorded, not refused (PO confirm).** The Freeze stores the node with `quarantine_reason:"blacklisted"`, never releasable, never in a planning view, and chains `graph_node_quarantined{blacklist_match}` — "we saw the forbidden target and did not touch it". The alternative reading of ADR-0016 §2 (refuse the write, store nothing about a forbidden system) is defensible and minimizes stored data; the product owner MUST confirm before Frozen, because refusing the write makes the near-miss unprovable in a customer report.
-13. **A2-2.7 / A2-5.6 — deviation from Q2 (PO signature required, not confirmation).** Q2 records "Finding carries confidence". A2 implements that as the mandatory provenance grade `observed · inferred · verified` on every node and edge instead of a finding field, so a grade is always tied to a referenced event (ADR-0016 §1: evidence, not opinion). This **changes a locked decision**; the product owner MUST sign it before A2 flips to Frozen. With §4 A2-04 (provenance set) `verified` is now reachable: it requires a second, independent observation.
+13. **A2-2.7 / A2-5.6 — deviation from Q2 (PO signature required, not confirmation).** Q2 records "Finding carries confidence". A2 implements that as the mandatory provenance grade `observed · inferred · verified` on every node and edge instead of a finding field, so a grade is always tied to a referenced event (ADR-0016 §1: evidence, not opinion). This **changes a locked decision**; the product owner MUST sign it before A2 flips to Frozen. With A2-4.7's bounded provenance list `verified` is now reachable: it requires a second, independent observation.
 14. **PO confirm — operator release of quarantine is removed.** `operator_release` is deleted from A1's `quarantine_kind` enum and A2 provides no release operation: an `out_of_scope` node is released **only** by an operator scope change and the recomputation it causes (A2-8.5, ADR-0016 §2 — an out-of-scope node can never be a target of a planned action). `operator_quarantine` (tightening) is kept, and a `blacklisted` node is never releasable. If the product owner wants a manual release it MUST be a new ADR amending ADR-0016 §2 and MUST require the target to be inside the widened allowlist at release time.
 
 ### A0 amendment requests
 
-A2 cites current A0; these were requests, and all four are ruled (plan §3 of
-the principal review, applied at the Freeze). They are kept as a record of what
+A2 cites current A0; these were requests, and all four are ruled (in the
+principal review's §3, `docs/reviews/2026-09-11-contract-review-principal.md`,
+applied at the Freeze). They are kept as a record of what
 A2 depends on in A0, with the ruling in the last column.
 
 | # | A0 clause | Request | Ruling and why A2 needs it |
 |---|---|---|---|
-| AM-1 | A0-1.2 | Register a prefix for a human principal (`usr_`) | **Resolved by default for the Freeze** (plan §1 PO-8, BLOCK-PO8 in A2-5.3): A0-1.2 registers `usr_` (`^usr_B{26}$`, 30 B) and A0 §4 adds `KindUser`, so A2-5.3's `user_id` validates per A0-1.5. Not delegated to A5 — A0 owns id *shapes*. **Awaits PO confirmation of the spelling only** (§6 item 2); additive-only afterwards (A0-1.10) |
-| AM-2 | A0-7.1 | Adopt the A2 cap constants (`NodeSummaryMaxBytes`, `FindingSummaryMaxBytes`, `MaxSupersedeChain`, `AttrsMaxKeys`, `AttrKeyMaxBytes`, `AttrValueMaxBytes`, `AttrsTotalMaxBytes`, `AddressesMax`, `EvidenceRefsMax`, `ToolVersionMaxBytes`) into the single A0 table/const block | **Accepted** (PAIR-N1): A0-7.1 is the one place caps live, and A2-7.1 now cites the registry rows instead of declaring values. Two constants moved with it — A2's `EvidenceIDsMax` is gone in favour of `EvidenceRefsMax` = 8, and A2's former `ToolVersionMaxBytes` = 32 was a defect (the registry value 64 governs). A2-local constants stay A2's under A0-7.7's delegation |
-| AM-3 | A0-3.6 | Extend the `node_id` reservation from "errors and log attrs" to graph payloads, and bless A2's payload spellings (`source_id`, `target_id`, `supersedes_id`, `superseded_by_id`, `agent_node_id`) | **Accepted in part.** The reservation is granted: `node_id` means the remote agent node (`slp_node_`) everywhere, so A2-1.6's rule is enforceable and `TestNoBareNodeIDInGraphDocuments` has an A0 basis. Blessing A2's *field names* is refused — A0 does not own per-contract payload vocabularies. A2 publishes the mapping instead: A2-1.6's A1↔A2 table (BLOCK-A2-14 / PAIR-M1) is the single source, cited by A1-3.6 |
+| AM-1 | A0-1.2 | Register a prefix for a human principal (`usr_`) | **Resolved by default for the Freeze** (the normative note is in A2-5.3): A0-1.2 registers `usr_` (`^usr_B{26}$`, 30 B) and A0 §4 adds `KindUser`, so A2-5.3's `user_id` validates per A0-1.5. Not delegated to A5 — A0 owns id *shapes*. **Awaits PO confirmation of the spelling only** (§6 item 2); additive-only afterwards (A0-1.10) |
+| AM-2 | A0-7.1 | Adopt the A2 cap constants (`NodeSummaryMaxBytes`, `FindingSummaryMaxBytes`, `MaxSupersedeChain`, `AttrsMaxKeys`, `AttrKeyMaxBytes`, `AttrValueMaxBytes`, `AttrsTotalMaxBytes`, `AddressesMax`, `EvidenceRefsMax`, `ToolVersionMaxBytes`) into the single A0 table/const block | **Accepted**: A0-7.1 is the one place caps live, and A2-7.1 now cites the registry rows instead of declaring values. Two constants moved with it — A2's `EvidenceIDsMax` is gone in favour of `EvidenceRefsMax` = 8, and A2's former `ToolVersionMaxBytes` = 32 was a defect (the registry value 64 governs). A2-local constants stay A2's under A0-7.7's delegation |
+| AM-3 | A0-3.6 | Extend the `node_id` reservation from "errors and log attrs" to graph payloads, and bless A2's payload spellings (`source_id`, `target_id`, `supersedes_id`, `superseded_by_id`, `agent_node_id`) | **Accepted in part.** The reservation is granted: `node_id` means the remote agent node (`slp_node_`) everywhere, so A2-1.6's rule is enforceable and `TestNoBareNodeIDInGraphDocuments` has an A0 basis. Blessing A2's *field names* is refused — A0 does not own per-contract payload vocabularies. A2 publishes the mapping instead: A2-1.6's A1↔A2 table is the single source, cited by A1-3.6 |
 | AM-4 | A0-8.2 | Confirm `*_ref` is not needed: A2 uses `evidence_id` / `evidence_ids` for `evi_` references because A0-8.2 fixes `*_id` for identifiers | **Accepted**: no `*_ref` suffix is added, A2-9.2's spellings stand, and `evidence_refs` (A1-1.1) remains the single approved exception to A0-8.2 — one suffix convention per fact, no drift |
 
 ### Cross-contract requests (not A0)
@@ -1793,8 +1795,9 @@ A2 depends on in A0, with the ruling in the last column.
   `quarantine_recomputed`, `report_inclusion_changed`,
   `action_blocked{graph_write_rejected, target_quarantined}`); the ingest dedup
   key A2 relies on for idempotent replay (A2-4.7, A0-3.11); and the
-  byte-identical PAIR blocks A2 also carries (BLOCK-A2-14's mapping table,
-  BLOCK-PO6, BLOCK-PO9, PAIR-Q1/Q2/SEC1/A1/A2).
+  byte-identical blocks A2 shares with A1 (the A2-1.6 mapping table, the
+  reject-never-redact ruling in §6, the no-release ruling in §6, and the
+  quarantine, target-quarantine, secret-scan and principal-vocabulary texts).
 - **A3** — the A0-7.10 composition rule, the planning-vs-reporting view
   mapping (A2-12.4), and its own mechanism-T assignments (A0-7.7).
 - **A4** — per-endpoint body size bounds (A0-8.9, A2-10.2 step 2), the history

@@ -11,6 +11,7 @@
 | **Implements** | ADR-0010 §2–§3 · ADR-0011 · ADR-0012 §2/§7 · ADR-0016 §1/§4 · ADR-0018 §1–§3 · ADR-0019 §1–§5 · ADR-0020 §3–§4 · SPEC §2 C1/C9/C11, §6, §8, §9 · Q3, Q4, Q6, Q9, Q10, Q11, Q13, Q15 |
 | **External refs** | RFC 2119 (MUST) · RFC 8785 JCS · RFC 3339 · RFC 4648 §5 · RFC 9110 · ULID layout |
 | **Authority** | ADR > SPEC > DESIGN > contract (`contracts/README.md`). A clause here that contradicts an Accepted ADR is a defect in this document. |
+| **Review provenance** | Clause rationale may cite review finding ids — `P-nn` (buildability and cross-document consistency) and `C-nn`/`S-nn`/`F-nn`/`D-nn`/`T-nn`/`E-nn` (adversarial) — from `docs/reviews/2026-09-11-contract-review-principal.md` and `docs/reviews/2026-09-11-contract-review-adversarial.md`; the merged fix plan is `docs/reviews/2026-09-11-contract-fix-plan.md`. Those ids are audit trail, not normative references: no clause depends on them. |
 
 ## 2. Scope
 
@@ -1085,8 +1086,8 @@ decided silently.
     recommendation that A3 transmit stage views in canonical form.
 14. **A0-7.10 — needs a decision, not a confirmation.** The Q4 caps cannot all
     be satisfied by a maximal stage view (500 × 512 B ≈ 250 KiB > 64 KiB;
-    ~131 B per node). A3 needs a composition rule. **Interim rule applied for the
-    Freeze (BLOCK-PO2, A0-7.10):** where two A0-7.1 caps cannot both hold for one
+    ~131 B per node). A3 needs a composition rule. **Interim rule applied for the Freeze
+    (A0-7.10):** where two A0-7.1 caps cannot both hold for one
     composed document, the smaller governs and the builder truncates with mechanism
     T. The product owner MUST confirm this fail-safe default or replace it with A3's
     composition rule before A3 is drafted; ~131 B per node is not a usable view
