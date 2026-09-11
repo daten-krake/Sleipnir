@@ -149,28 +149,110 @@
 - Continuation writers for A1 (11 rows + 5 PO rows) and A2 (9 rows + 5 PO rows)
   launched with the parent-verified remaining-work audit instead of their own
   stale logs (workflow `fe5bae3a`).
-- (append as work happens)
+- **Continuation writers finished A1 and A2** (workflow `fe5bae3a`, committed
+  `133fbdf`): A1 taxonomy **39 → 42 kinds** (the three new `Kind` consts were
+  missing entirely), `BLOCK-A1-01/02/09`, kill outbox, `UnmarshalEvent`,
+  `Served() = cjson.With`, §4.3 **row 3**, the A1-7.6 `PayloadHash` definition
+  *and* vector (the first writer's log claimed it applied; it was not), the
+  PAIR-K1 resolved-row seek rule, §4.4 test index, PO-1/3/4/6/9. A2: renames
+  finished in the examples, §4.2 fingerprint vectors, the fabricated finding
+  `content_hash` replaced by the verified F1 value, the other three recomputed
+  and labelled illustrative, `provenance` an array in all four examples with
+  `verified` only on independent re-observation, §4.3 test index, PO-5…PO-9.
+- **Integrator pass 1** (`9638165`): stripped 33 fix-plan scaffolding references
+  (`BLOCK-*`, `PAIR-*`, the pair symbol, `plan §n`) out of normative text and
+  added a *Review provenance* header row to each document so the `P-nn`/`C-nn`/
+  `S-nn`/`F-nn`/`D-nn`/`T-nn`/`E-nn` citations resolve to `docs/reviews/` and
+  are marked audit trail, not normative references.
+- **Integrator pass 2** (`a7562ea`): merged the three duplicate PO questions in
+  A1 §6 (6/15, 7/16, 9/17) and one in A2 §6 (3/12) by cross-reference — the item
+  numbers are cited from normative clauses, so renumbering would have created
+  dangling references; fixed a stale value (§6.7 still said the head hash is
+  emitted every 1000 `seq`, A1-5.8 rules 100); replaced the last plan-internal
+  ids in A1's traceability table with §6 item numbers.
+- **Verification: 52 mechanical checks, 0 failures**
+  (`docs/reviews/2026-09-11-verify-vectors.py`, committed as review evidence).
+  Every published vector recomputed independently: A0-2.17 **V1–V8**, A1 §4.3
+  **rows 0–3** (preimage lengths, `hash`, served lengths, served digests,
+  `prev_hash` links from `ChainZero`, canonical stability, the three-name
+  exclusion list), A1-7.6 `PayloadHash`, A2 §4.2 **F1/F1-R/F3/S1** incl. the
+  "defective implementation" digest, and all four A2 example `content_hash`
+  values rebuilt from each example's own 20-key `contentDoc`. Plus: 42 `Kind`
+  consts, no stale counts, six sections per document, the six byte-identical
+  paired blocks still identical, **no dangling clause reference among ~2650
+  cross-document citations**, no raw U+2028/U+2029/U+007F in any table row.
+- **PR #2 opened and verified**: <https://github.com/daten-krake/Sleipnir/pull/2>
+  — OPEN, base `main`, 13 files, +9056/−1, label `agent-built`, body carrying the
+  review trail, the integrator verification, the **nine decisions D1–D9**, the
+  46-item confirm checklist and the residual-risk list.
 
 ## Decisions
 
-- (record as they happen; ADR-worthy outcomes go to `adr/` as **Proposed**)
+- **No new ADRs this session.** Every decision the reviews forced is either a
+  contract clause (authority: ADR > SPEC > DESIGN > contract, and no clause
+  contradicts an Accepted ADR) or a product-owner item in a document's §6.
+- **Two decisions narrow or change locked PO decisions and are flagged for
+  signature, not confirmation** (recorded as PR #2 items **D1** and **D2**):
+  A1-6.5 narrows Q11's "explicit operator override" to admin-role-only and makes
+  an export override single-use (adversarial C-01/S-07, insider threat A15);
+  A2-2.7/A2-5.6 implement Q2's "Finding carries confidence" as the mandatory
+  provenance grade instead of a finding field. Safe defaults are in the text;
+  neither document flips to `Frozen` until the product owner signs.
+- **AM-1 (`usr_`) resolved by default** (PR #2 item D3) — it was the single hard
+  freeze blocker, claimed independently by A1 §6.2 and A2 §6.2. Registered in
+  A0-1.2 + `KindUser`, *not* delegated to A5 (that would split A0-1.5 validation
+  across two contracts).
+- **Conflict precedence for contract review** (used by the fix plan, worth
+  keeping): adversarial reviewer wins on safety semantics, principal wins on
+  notation/buildability/naming, and where both are safety-relevant and
+  incompatible the **stricter** option is applied and escalated to the product
+  owner. Applied to 18 conflicts, e.g. `HeadLogIntervalSeq` 1000 → **100**,
+  cursor direction bit → resolved-row seek rule, `confidence` new-node fork →
+  bounded provenance list, `operator_release` → **deleted**.
+- **Process decisions:** review reports and the fix plan are committed under
+  `docs/reviews/` (precedent: `docs/adversarial-review-2026-09-03.md`), because
+  clause rationale cites finding ids and a citation that cannot be followed is
+  worthless; a child's deliverable is always a **file written incrementally**,
+  never its final message (three runs were cut short and only files survived);
+  a child's own progress log is treated as untrusted input and re-audited
+  against the file (the A0 writer's log understated its progress by nine rows,
+  the A1 writer's claimed an applied row that was absent).
 
 ## Open questions carried forward
 
-- PO decision queue: A0 §6 (14 items, incl. **A0-7.10** which blocks A3) and
-  A2 §6 (11 items + **AM-1…AM-4**, where AM-1 `usr_` is on A2's critical path).
-- A3–A8 fan-out briefs (super-minimal, WORKFLOW §5) — after the freeze.
-- First code package (scaffold + `internal/errs` + `internal/logging`) — after
-  the PR merges.
-- Shared contract-test suite (JSON round-trip, unknown-field tolerance,
-  negative cross-engagement tests) — the fan-out merge gate.
-- Standing: Pi offline capability (backlog 4); AD technique scope for the v1
-  tool registry; backlog 9–11 (CI/CD, observability, model drift).
+- **PR #2 needs the product owner**: decisions **D1–D9** (nine) plus the
+  46-item confirm checklist. On answers, flip A0/A1/A2 `Draft` → **Frozen** in
+  `contracts/README.md` and each document header (fix plan calls this WP-00).
+- **Shared contract-test suite** — now seven categories (`contracts/README.md`:
+  the safety-path pairing bullet is new) and ~60 test ids are named inside the
+  clauses they guard. This is the merge gate for every implementing package.
+- **First code packages**, in the order the principal review proposes in its §4:
+  repo scaffold + `internal/errs` + `internal/logging` (DESIGN §1, ADR-0019),
+  then `internal/ids`, `internal/cjson`, `internal/paging`, `internal/timex`,
+  `internal/caps`, then `internal/events` and `internal/graph`.
+- **A3–A8 fan-out briefs** (super-minimal, WORKFLOW §5). **A3 is blocked on D4**
+  (the A0-7.10 view-cap composition rule); A5 inherits the `usr_` shape, the
+  machine-principal exclusion list from A1-7.4/A1-8.4, the admin gate on
+  `integrity_override`, and `engagement_assignment_changed` (D9's debt); A7 owns
+  the action-spec document whose canonical bytes `action_spec_evidence_id` holds.
+- **Residual risk carried** (PR #2 "Known debt"): engagement assignment and
+  credential revocation unaudited until A5; no `evidence_removed` kind, so
+  A1-8.8 is unimplementable until one exists; tail truncation open unless D5
+  approves the webhook anchor; `cvss_v3_x10` has no range (P-77 — the only
+  deferred item that is **not** additive-safe, needs an ADR); no approval-path
+  JSON example in A1 §4.2.
+- **Store-seam duties named by A1/A2 for backlog §6** (persistence): the
+  per-engagement append lock primitive (A1-5.4), the dedup table (A1-7.6), the
+  ingest watermark (A1-7.7), `chain_head_trail` and the kill outbox with
+  `REVOKE UPDATE, DELETE` (A1-5.8, A1-7.12), and any checkpoint/re-genesis
+  mechanism (A1-6.9 — needs its own ADR).
+- Standing: Pi offline capability (backlog §4); AD technique scope for the v1
+  tool registry; backlog §9–§11 (CI/CD, observability, model drift).
 
 ## Token usage
 
 | total input | uncached input | cache read | cache write | output | reasoning |
 |---|---|---|---|---|---|
-| 12087529 | 283113 | 11804416 | 0 | 144134 | 64146 |
+| 19470123 | 342699 | 19127424 | 0 | 138815 | 56662 |
 
 _(run `sessions/update-usage.sh sessions/2026-09-11-contract-freeze-a1.md` at session end)_

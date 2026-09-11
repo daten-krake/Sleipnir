@@ -1,5 +1,12 @@
 # Quota limit snapshot — contract freeze, A0–A2
 
+> **SUPERSEDED 2026-09-11 — the resume plan below was executed in full.** A1 was
+> completed (and A1-4 turned out to be a stub too), both reviews ran, all 63
+> MUST FIX findings were applied, and the branch is open as
+> [PR #2](https://github.com/daten-krake/Sleipnir/pull/2). See
+> `sessions/2026-09-11-contract-freeze-a1.md` and `next_steps.md`. Kept as the
+> record of what a quota cut costs and how to resume one.
+
 - **Date**: 2026-09-07 (session `2026-09-07-contract-freeze`)
 - **Branch**: `contracts/a0-a2-conventions` (pushed to origin — verify before
   resuming)
