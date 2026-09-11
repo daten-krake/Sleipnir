@@ -113,6 +113,42 @@
   agent-fixable ones, and digest-critical changes flagged for vector
   recomputation. Rationale: three writers working from two overlapping reports
   would resolve the same conflict three different ways.
+- **Triage stage completed** (`sleipnir-principal`, 649-line plan, committed as
+  `docs/reviews/2026-09-11-contract-fix-plan.md`): all **63 MUST FIX assigned
+  exactly once** (2 PO-only, 13 A0, 30 A1, 18 A2), 90 of 99 SHOULD/NICE
+  assigned, 9 deferred with additive-safety verdicts, 14 duplicate findings
+  collapsed, **17 paired rows** requiring byte-identical text in 2–3 files, and
+  18 reviewer conflicts resolved by a stated precedence rule (adversarial wins
+  on safety semantics, principal on notation/buildability/naming, stricter
+  option + PO signature when both are safety-relevant).
+- **All 12 vector values in the plan independently recomputed by the integrator
+  before the writers ran** (V7 19 B, V8 28 B, A1 §4.3 row 3 preimage 702 B +
+  served 863 B, A1-7.6 `PayloadHash` 293 B, A2 §4.2 F1 656 B, F1-R's forbidden
+  unsorted digest, F3 656 B, S1 304 B) — every length and digest exact, so the
+  writers publish verified values rather than recomputed guesses.
+- **Three writers ran in parallel** (one file each, workflow `00ee86b3`); all
+  three were cut short again, but the partial work survived on disk and was
+  committed as WIP `9ab3a26` after integrator verification (A0-2.17 V1–V8 still
+  byte-exact, A1 §4.3 rows 0–2 untouched).
+- **A0 finished by the integrator** (`dfb54ac`): all 21 plan rows + PO-2 + PO-8
+  verified present by grep audit, plus two integrator findings:
+  - **I-01** (MUST FIX, missed by both reviewers): the canonical-bytes column of
+    the *normative* A0-2.17 table had two contradictory readings of `\uXXXX` —
+    V3 only reaches len 57 if `\u0001` is six literal characters, V6 only
+    reaches len 18 if `\uFFFD` is the character. A notation rule now says which
+    is which and that the `len` column decides.
+  - **I-02**: raw U+2028/U+2029 in a Markdown table row made the file's line
+    count reader-dependent (`str.splitlines` 1094 vs `grep`/`awk` 1092), so a
+    normative vector parsed differently per tool — found because my own
+    verifier silently skipped V7/V8. Line-break/control code points are now
+    `<2028>`/`<2029>`/`<7F>` placeholders with a byte legend; decoded they still
+    reproduce len 19 / len 28 and both digests.
+- **`contracts/README.md` integrator-only items** (`7694c4a`): the A0 tie-break
+  rule (P-68) and the seventh merge-gate bullet **safety-path pairing** (E-06) —
+  the rule that makes the ~60 test ids the plan assigns enforceable.
+- Continuation writers for A1 (11 rows + 5 PO rows) and A2 (9 rows + 5 PO rows)
+  launched with the parent-verified remaining-work audit instead of their own
+  stale logs (workflow `fe5bae3a`).
 - (append as work happens)
 
 ## Decisions
