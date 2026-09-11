@@ -70,6 +70,49 @@
 - PR body drafted at `/tmp/pr-body-a0a2.md` with the full PO checklist: A0 §6
   (14), A2 §6 (11), A1 §6 (14), and the deduplicated amendment requests
   (A1 AM-1 ≡ A2 AM-1 `usr_`; A1 AM-2 overlaps A2 AM-2; A1 AM-3, AM-4).
+- **Both reviews completed** (workflow `c7a3dc5d`) and committed as the audit
+  trail in `docs/reviews/` (`203ee04`):
+  - `2026-09-11-contract-review-principal.md` — 105 findings
+    (**35 MUST** / 62 SHOULD / 8 NICE), verdict on buildability: *a junior
+    implementer cannot build `internal/ids`/`cjson`/`events`/`graph` from the
+    three documents alone* (31 MUST FIX gaps, none architectural); all **8
+    amendment requests ruled** (AM-1 `usr_` ACCEPT = the single freeze blocker;
+    A2 AM-3 accepted *in part* — reservation yes, blessing A2's field names no);
+    work-package split WP-01… in §4.
+  - `2026-09-11-contract-review-adversarial.md` — 57 findings
+    (**28 MUST** / 20 SHOULD / 9 NICE). Most serious: **C-02** the approved
+    action spec is never stored, so `fingerprint_hash` is unlinkable to any
+    bytes (ADR-0018 §3 fails); **C-01** A1-6.5 override authority contradicts
+    itself *and* narrows Q11 without a PO decision; **C-04** scope-change vs
+    blacklist re-check; **S-02** tail truncation (A11); **F-01/F-02/F-03**
+    canonical-JSON edge cases (floats, invalid UTF-8/lone surrogates,
+    U+2028/9); **E-01…E-04** MUSTs with no negative test.
+- **Integrator verification of A0-2.17 (V1–V6, normative canonical-JSON
+  vectors):** all six reproduce exactly — canonical bytes, stated lengths and
+  SHA-256 digests — and re-canonicalizing each input cell (sorted keys, compact
+  separators, `ensure_ascii=False`) reproduces the canonical column byte for
+  byte, V5 included after applying the `{seq, prev_hash, hash}` exclusion list.
+  This is independent evidence that A0-2 is implementable with a plain
+  stdlib-style encoder (C1) and that the declared UTF-8-byte-order deviation
+  from RFC 8785 is what V6 locks.
+- **New integrator finding I-01 (MUST FIX, not in either review):** in the
+  *normative* A0-2.17 table the `\uXXXX` display form means two different
+  things. V3's canonical cell needs `\u0001` read as **literal 6-char escape
+  text** (raw length 57 = stated), while V6's canonical cell needs `\uFFFD`
+  read as **the character U+FFFD** (decoded length 18 = stated; raw would be
+  21). A builder transcribing the table into the contract-test suite therefore
+  cannot apply one rule, and V6's printed cell contradicts its own `len`
+  column. Fix: print V6 with the literal character (as V3 already does for
+  `é中😀`) or add an explicit byte/hex column plus a note stating when an
+  escape is text and when it is a character. → hand to the A0 writer.
+- **Triage stage launched** (`490a1d06`, `sleipnir-principal`, 45 min): merge
+  both reports into one authoritative `/tmp/fix-plan.md` — every MUST FIX
+  assigned exactly once to one of three single-file writers, duplicates
+  collapsed, reviewer conflicts resolved (adversarial wins on safety semantics,
+  principal on notation/buildability), PO-only decisions separated from
+  agent-fixable ones, and digest-critical changes flagged for vector
+  recomputation. Rationale: three writers working from two overlapping reports
+  would resolve the same conflict three different ways.
 - (append as work happens)
 
 ## Decisions
