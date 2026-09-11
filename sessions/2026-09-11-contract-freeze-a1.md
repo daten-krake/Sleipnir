@@ -49,6 +49,27 @@
 - Minor consistency edits inside A1-1..A1-3 (all listed in the run report):
   header package name `internal/event` → `internal/events` (DESIGN §1) and the
   additive A1-3 changes above. No A1-1/A1-2 clause text changed.
+- **Recovery from the child timeout:** the A1 architect child hit its 60-min
+  limit *after* writing the whole document (2472 lines) and updating this
+  tracker — only its final report was lost. Recovered from disk, verified, and
+  committed as `73c2fa8`. Lesson recorded: a child's deliverable must be a
+  **file written incrementally**, never the final message.
+- **Integrator verification of A1 §4.3 (normative chain vector):** recomputed
+  independently with a plain sorted-key compact JSON encoder + SHA-256 — all
+  three rows are **byte-exact** (preimage 428/816/715 B, the three `hash`
+  values, served 589/977/876 B and their digests), canonical form stable under
+  re-encoding, `prev_hash` links chain from `ChainZero`, and `hash`/
+  `prev_hash`/`seq` are absent from every preimage. Evidences C1 (stdlib-only
+  feasibility of the chain) and A0-2 determinism for the event spine.
+- Reviews relaunched (workflow `c7a3dc5d`, 50-min budget each, in parallel):
+  `sleipnir-principal` (buildability, cross-doc consistency, AM rulings,
+  work-package split, test coverage) and `sleipnir-architect` (adversarial).
+  Both must write findings to `/tmp/a0a2-review-{principal,architect}.md`
+  **incrementally**, starting in the first 10 minutes, so a timeout cannot lose
+  the report again.
+- PR body drafted at `/tmp/pr-body-a0a2.md` with the full PO checklist: A0 §6
+  (14), A2 §6 (11), A1 §6 (14), and the deduplicated amendment requests
+  (A1 AM-1 ≡ A2 AM-1 `usr_`; A1 AM-2 overlaps A2 AM-2; A1 AM-3, AM-4).
 - (append as work happens)
 
 ## Decisions
