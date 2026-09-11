@@ -236,7 +236,7 @@ kind (A1-3.5).
 | `chain_verified` | `(platform, "integrity")` | `trigger:enum{startup,pre_export,on_demand}` `head_seq:int` `head_hash:64hex` `verified_count:int` `duration_ms:int` | Q11, A1-6.2 |
 | `chain_break_detected` | `(platform, "integrity")` | `break_kind:enum{preimage_mismatch,link_mismatch,seq_gap,seq_disorder,duplicate_event_id,genesis_invalid,row_count_mismatch,engagement_mismatch,head_regression}` `break_seq:int` `break_event_id:string` `expected_prev_hash:64hex` `actual_prev_hash:64hex` `verified_count:int` | A1-6.3, A11, A1-5.8 (`head_regression`) |
 | `integrity_override` | `(user, "")` — admin role only (A1-6.5) | `reason:string(512)*` `break_event_id:string` `scope:enum{export,internal_view}` | Q11, A1-6.5 |
-| `artifact_released` | `(user, "")` **or** `(platform, "integrity")` | `artifact_kind:enum{report_html,report_pdf,findings_json,evidence_bundle,verification_bundle}` `artifact_evidence_id:string` `head_seq:int` `head_hash:64hex` `integrity_state:enum{verified,failed_overridden}` `override_event_id:string` `recipient_ref:string(128)` | Q11, A1-6.6 (the export stamp as a chained event), A1-6.5 (single-use `scope:"export"` override) |
+| `artifact_released` | `(user, "")` **or** `(platform, "integrity")` | `artifact_kind:enum{report_html,report_pdf,findings_json,evidence_bundle,verification_bundle}` `artifact_evidence_id:string` `head_seq:int` `head_hash:64hex` `integrity_state:enum{verified,failed_overridden}` `override_event_id:string` `recipient_ref:string(128)` | Q11, A1-6.6 (the export stamp as a chained event), A1-6.5 (the `scope:"export"` override it names, ADR-0021) |
 
 **Engagement and run lifecycle (SPEC §5 steps 1–2, 8)**
 
@@ -356,7 +356,7 @@ absorbed" — including every offline-node replay (ADR-0013).
   rule are `engagement_created`, `engagement_closed` and `artifact_released`
   (T-01/T-02): the engagement envelope and every released artifact must be
   independently filterable and independently reportable, and `artifact_released`
-  is the enforcement point of A1-6.5's single-use override.
+  is the enforcement point of A1-6.5's override attribution (ADR-0021).
 - **A1-3.6** A2 coordination (binding on A2): the graph-provenance field names
   A2 MUST reference and MUST NOT rename are `graph_node_id`, `graph_edge_id`,
   `node_kind`, `edge_kind`, `source_event_id`, `supersedes_graph_node_id`,
@@ -462,7 +462,7 @@ absorbed" — including every offline-node replay (ADR-0013).
   | `integrity_override` | `reason` MUST be non-empty — an override without a stated reason is `validation` (Q11: never silent); `break_event_id` MUST resolve in this engagement (A1-4.11) |
   | `engagement_created` | composed at `seq` **1** of the chain (A1-5.3 keeps `chain_genesis` at `seq` 0 as the integrity anchor); `roe_evidence_id` and `policy_evidence_id` MUST be non-empty — an engagement whose rules of engagement are not an artifact is not reproducible (SPEC §7); `client_ref` is a customer-chosen label, never a person's name (A0-3.7) |
   | `engagement_closed` | `report_evidence_id` MUST be non-empty when `close_reason:"completed"` and MAY be `""` for `cancelled`/`abandoned`; `close_reason` MUST be one of the three enum values (A1-4.12) |
-  | `artifact_released` | composed by the export path for **every** released customer-facing artifact (A1-6.6) and only after that path's `pre_export` walk; `head_seq`/`head_hash` MUST equal the values carried in the artifact's A1-6.6 metadata block (the last row the walk verified, A1-6.6); `integrity_state` is the A1-6.6 export enum, derived per A1-6.6's mapping table; `override_event_id` MUST be non-empty iff `integrity_state:"failed_overridden"` and MUST name the single-use override that released this artifact (A1-6.5); `artifact_evidence_id` MUST resolve in this engagement (A1-4.11) |
+  | `artifact_released` | composed by the export path for **every** released customer-facing artifact (A1-6.6) and only after that path's `pre_export` walk; `head_seq`/`head_hash` MUST equal the values carried in the artifact's A1-6.6 metadata block (the last row the walk verified, A1-6.6); `integrity_state` is the A1-6.6 export enum, derived per A1-6.6's mapping table; `override_event_id` MUST be non-empty iff `integrity_state:"failed_overridden"` and MUST name the live override that released this artifact (A1-6.5, ADR-0021); `artifact_evidence_id` MUST resolve in this engagement (A1-4.11) |
   | `scope_changed` | `entry_hash` MUST be the A0-2.15 digest of `entry`, so a scope entry is comparable without echoing it into every report (ADR-0005 §2–§3). A **global**-blacklist change MUST also be composed as `scope_changed` into **every affected engagement chain**, with `change_kind:"blacklist_added"`/`"blacklist_removed"` and the `entry`/`entry_hash` of the global entry: the composing subsystem is `scope`, `actor` is the admin user (`(user, "")`, `usr_` id per §6.2) and `run_id` is `""`. Each engagement's `quarantine_recomputed{blacklist_changed}` MUST reference **that engagement's own** `scope_changed` event as `trigger_event_id`. `Tests: TestGlobalBlacklistChangeIsChainedPerEngagement, TestQuarantineRecomputedTriggerResolvesInEngagement` |
   | `run_started` | `llm_data_policy` MUST equal the engagement policy in force at start (ADR-0020 §1); `scope_snapshot_evidence_id` MUST be non-empty — a run without a scope snapshot is not reproducible (SPEC §7) |
   | `job_spawned` / `task_spawned` | `image_digest` MUST be the registry-derived digest, never an orchestrator-supplied string (Q14, ADR-0017 §2); `spawn_request_event_id` MUST be non-empty; `task_spawned.target_graph_node_id` MUST equal the `spawn_requested` value for the same spawn (C-02/T-03: the target is cited by `gn_` id, never by string, A2-8.3) |
@@ -1181,8 +1181,9 @@ absorbed" — including every offline-node replay (ADR-0013).
   and a later `chain_break_detected` invalidates it (a **new** break needs a
   **new** human decision). It is not a
   standing waiver and it has no expiry of its own; each released artifact MUST
-  additionally name the override event that released it (A1-6.6), so one
-  override cannot silently authorize an unlimited stream of unrelated exports.
+  additionally name the override event that released it (A1-6.6), so every
+  release under one override is individually attributable — that attribution is
+  the compensating control for the risk accepted in ADR-0021.
 
   Only a `user` principal holding the **admin** role may compose
   `integrity_override` (SPEC §3 places integrity-class controls next to the
@@ -1194,17 +1195,26 @@ absorbed" — including every offline-node replay (ADR-0013).
   `integrity_override` is not client-appendable, A1-3.4).
   `Tests: TestOverrideIsAdminOnly, TestOperatorCannotOverrideAnyBreak.`
 
-  An `integrity_override` with `scope:"export"` is **single-use** (mirroring
-  Q10): it authorizes exactly one artifact release. The platform MUST bind the
-  release to it atomically — a uniqueness constraint on
-  `(engagement_id, override_event_id)` in the release record — and MUST compose
-  an `artifact_released` event naming `override_event_id`, `head_seq`,
-  `head_hash` and the artifact's `evi_` id. A second release requires a second
-  human decision and MUST fail with `conflict` + `integrity_failed` (A0-3.1).
-  An override with any other `scope` still dies at the next `chain_verified` or
-  `chain_break_detected`.
-  `Tests: TestSingleUseOverride, TestOverrideDiesAtNextBreak,`
-  `TestArtifactReleasedNamesItsOverride.` **PO decision** (§6 item 15).
+  Lifetime (ADR-0021, product owner decision 2026-09-11): an
+  `integrity_override` with `scope:"export"` is **not single-use**. It stays
+  valid until it dies under the rule above and MAY authorize more than one
+  artifact release. The platform MUST compose an `artifact_released` event for
+  **every** release, naming `override_event_id`, `head_seq`, `head_hash`, the
+  artifact's `evi_` id and `recipient_ref`, so the complete set of artifacts
+  released under one human decision is reconstructable from the chain alone. A
+  release attempted with no live `export` override MUST fail with
+  `integrity_failed` (A0-3.1) and MUST NOT compose `artifact_released`.
+  _Rationale: a per-artifact rule does not survive the long-term service vision,
+  where one release decision legitimately covers a report, its findings export
+  and its evidence bundle. The residual risk — one admin decision authorizing
+  several customer artifacts from a chain known to be broken — is **accepted and
+  transferred to the service owner** who runs the deployment; the platform's
+  side of the bargain is that the attribution above is complete, immutable and
+  stamped into the export (A1-6.6). An owner who needs a stricter rule
+  compensates with their own review and logging of `artifact_released`._
+  `Tests: TestEveryReleaseUnderOneOverrideIsChained,`
+  `TestReleaseWithoutLiveOverrideRefused, TestOverrideDiesAtNextBreak,`
+  `TestArtifactReleasedNamesItsOverride.`
 
 - **A1-6.6** Integrity metadata an export MUST carry. Every customer-facing
   artifact (report HTML/PDF, findings JSON export, evidence bundle) MUST embed
@@ -1243,16 +1253,17 @@ absorbed" — including every offline-node replay (ADR-0013).
   | `unverified` | no — `integrity_failed` (409, A1-6.2/A1-6.4) | not emitted |
   | `verified` | yes | `verified` |
   | `failed` | no — `integrity_failed` (409, A1-6.4) | not emitted |
-  | `overridden` | yes, once (A1-6.5) | `failed_overridden` |
+  | `overridden` | yes, while the override is live (A1-6.5) | `failed_overridden` |
 
   The export path MUST compose an `artifact_released` event (A1-3.3, A1-4.2)
   for every released customer-facing artifact, naming `artifact_kind`,
   `artifact_evidence_id`, this block's `head_seq`/`head_hash`,
   `integrity_state`, `override_event_id` (`""` when `verified`) and
-  `recipient_ref`. It is the enforcement point for the single-use override of
-  A1-6.5: the release record's uniqueness constraint on
-  `(engagement_id, override_event_id)` and this event are the same decision,
-  recorded twice. `Tests: TestExportComposesArtifactReleased,`
+  `recipient_ref`. It is the compensating control for the override lifetime of
+  A1-6.5 (ADR-0021): the override is not single-use, so this event — one per
+  artifact, chained, attributed to the override and to a recipient — is what
+  makes the full set of releases under one human decision reconstructable.
+  `Tests: TestExportComposesArtifactReleased,`
   `TestExportIntegrityStateIsNotTheChainStateEnum`.
 
   _Residual risk printed here because the PO declined the out-of-band webhook
@@ -1828,7 +1839,7 @@ const (
 	KindChainVerified      Kind = "chain_verified"
 	KindChainBreakDetected Kind = "chain_break_detected"
 	KindIntegrityOverride  Kind = "integrity_override"
-	KindArtifactReleased   Kind = "artifact_released" // A1-6.6, single-use override (A1-6.5)
+	KindArtifactReleased   Kind = "artifact_released" // A1-6.6, override attribution (A1-6.5, ADR-0021)
 
 	// Engagement and run lifecycle.
 	KindEngagementCreated        Kind = "engagement_created" // seq 1 (A1-5.3 keeps genesis at seq 0)
@@ -2687,7 +2698,7 @@ owns the rule also names them, this subsection is the index.
 | A1-6.2 | `TestReadDuringStartupWalkIsFlaggedUnverified`, `TestExportFromUnverifiedChainRefused`, `TestAppendRefusedBeforeStartupVerificationCompletes` |
 | A1-6.3 | `TestOneBreakEventPerRun`, `TestBreakDedupStateWrittenInSameTransaction` |
 | A1-6.4 | `TestExportBlockedOnFailedChain`, `TestInternalViewOverrideDoesNotAuthorizeExport`, `TestAppendsContinueOnFailedChain` |
-| A1-6.5 | `TestOverrideIsAdminOnly`, `TestOperatorCannotOverrideAnyBreak`, `TestSingleUseOverride`, `TestOverrideDiesAtNextBreak`, `TestArtifactReleasedNamesItsOverride` |
+| A1-6.5 | `TestOverrideIsAdminOnly`, `TestOperatorCannotOverrideAnyBreak`, `TestEveryReleaseUnderOneOverrideIsChained`, `TestReleaseWithoutLiveOverrideRefused`, `TestOverrideDiesAtNextBreak`, `TestArtifactReleasedNamesItsOverride` |
 | A1-6.6 | `TestExportComposesArtifactReleased`, `TestExportIntegrityStateIsNotTheChainStateEnum` |
 | A1-6.8 | `TestVerificationIdempotent`, `TestVerificationWritesNoOtherKind` |
 | A1-7.6 | `TestIdempotencyKeyReuseWithDifferentPayloadIsConflict`, `TestRetryCannotShiftClaimedTime`, `TestPayloadHashVector`, `TestDedupHitWritesNoEvent`, `TestPlatformDedupKeyIsNonEmptyPerKind`, `TestPlatformDedupKeyEmptyRejected` |
@@ -2755,7 +2766,7 @@ safety-test rule for the write path; A1 does not reach `Frozen` without them
 | **A0-5.6** | platform-recorded time is authoritative for ordering, verification, expiry and single-use checks | A1-1.4, A1-5.4 (`recorded_at` clamped non-decreasing), A1-6.1 (verification uses stored bytes and `seq`, not any client time), A1-8.1 (`occurred_claimed_at` orders nothing), A1-4.2 (`expires_at` platform-computed) |
 | **A0-5.7** | a client-supplied timestamp lives in a `*_claimed_at` field, never drives ordering/expiry/digests, and is stored next to `recorded_at` | A1-1.1 (`occurred_claimed_at`), A1-1.4, A1-4.12 (no payload timestamp is ever a claimed one), A1-5.2 (it **is** hashed, so it cannot be edited afterwards), A1-7.3 (the only client time in an append), A1-5.9 T3 |
 | **Adversarial T-01/T-02** | engagement lifecycle and artifact release are chainable facts, not side effects | A1-3.3 (`engagement_created` at `seq` 1, `engagement_closed`, `artifact_released`), A1-3.5 (additive), A1-3.7 (SPEC §5 steps 1 and 9), A1-4.2 (the three obligations rows), A1-6.6 (the export path composes `artifact_released`), §4.1 (three new `Kind` consts, 42 total), A1-4.5 (`TestMaximalPayloadFitsCanonicalBound` over 42 kinds), A1-4.4 (`TestKindListIs42AndClosed`) |
-| **Adversarial C-01/S-07 (§6 item 15)** | override authority is admin-only and an `export` override is single-use | A1-6.5 (both blocks), A1-3.3 (`artifact_released.override_event_id`), A1-4.2 (`override_event_id` non-empty iff `failed_overridden`), A1-6.6 (release record uniqueness), §6 item 15 |
+| **Adversarial C-01/S-07 (§6 item 15, ADR-0021)** | override authority is one unambiguous rule (admin-only), and the override's lifetime is a product-owner decision: not single-use, the residual risk accepted by the service owner and compensated by chained attribution | A1-6.5 (authority + lifetime), A1-3.3 (`artifact_released.override_event_id`), A1-4.2 (`override_event_id` non-empty iff `failed_overridden`), A1-6.6 (one `artifact_released` per artifact), §6 item 15, ADR-0021 |
 | **Principal S-02/P-37 (§6 item 16)** | the head hash is anchored out-of-band in a store the event role cannot rewrite | A1-5.8 (`chain_head_trail`, `REVOKE UPDATE, DELETE`, 100-`seq` interval), A1-3.3 (`break_kind:head_regression`), A1-6.3 (the `head_regression` row), A1-6.2 (startup compares against the trail), A1-6.6 (residual-risk wording), §4.1 (`HeadLogIntervalSeq = 100`), §6 item 16 |
 | **Principal P-13/P-32, adversarial T-07** | the `recorded_at` forward clamp is byte-wise, bounded, and its state lives on the chain head | A1-5.4 (byte-wise comparison, 1000 ms bound), A1-5.6 (`LastRecordedAt`, `LastBreakSeq`, `LastBreakKind`, `LastBreakEventID`), A1-6.3 (break-dedup state), §4.1 (`ChainHead`) |
 | **Principal P-09** | a refused append during the startup walk is retryable, not a defect | A1-7.5 (`timeout` row + the `internal` reservation), A1-7.11 (retry reuses `idempotency_key`; the one retryable write), A1-6.2 (`unverified`) |
@@ -2961,14 +2972,22 @@ amendment requests (AM-1…AM-4) is independent of A2's.
     MUST be a new ADR amending ADR-0016 §2 and MUST require the target to be
     inside the widened allowlist at release time.
 
-15. **A1-6.5 — override authority and lifetime (PO decision, not
-    confirmation).** The clause now narrows Q11's "explicit operator override
-    allowed" to **admin-role only** (an operator-scoped user, including one
-    assigned to the engagement, MUST NOT override any break) and makes an
-    `scope:"export"` override **single-use**, one override per released
-    artifact. Both narrowings are stricter than the literal Q11 wording; the
-    product owner MUST sign them before A1 flips to Frozen (adversarial C-01,
-    S-07; insider threat A15).
+15. **A1-6.5 — override authority and lifetime: DECIDED (product owner,
+    2026-09-11) → ADR-0021.** *Authority:* admin-role only — an operator-scoped
+    user, including one assigned to the engagement, MUST NOT override any break
+    (SPEC §3 puts integrity-class controls next to the hard stop; Q11's
+    "operator" reads as "human", so this narrows it deliberately). The insider
+    argument (adversarial A15) was explicitly **not** the reason: the product
+    owner does not treat insider abuse as a v1 concern. *Lifetime:* an `export`
+    override is **not single-use** — it lives until the next `chain_verified` or
+    `chain_break_detected` and may authorize several artifacts, because a
+    per-artifact rule does not survive the long-term service vision. The
+    residual risk is **accepted and transferred to the service owner** running
+    the deployment, who compensates with logging; the platform's obligation is
+    that the attribution is complete (one chained `artifact_released` per
+    artifact, naming the override, the head, the artifact and the recipient,
+    A1-6.6) and stamped into the export. ADR-0021 is **Proposed** in PR #2 and
+    awaits the product owner's review.
 16. **A1-5.8 / §6.7 — out-of-band head anchoring (PO decision).** The Freeze
     ships the in-platform anchor only: an append-only `chain_head_trail` table
     (`REVOKE UPDATE, DELETE`) plus `break_kind:"head_regression"`. Residual

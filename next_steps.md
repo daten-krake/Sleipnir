@@ -7,10 +7,12 @@ the first code package.** Still no product code until the contracts are frozen
 ## 0. Housekeeping (do these first)
 
 - [ ] **PR #2** — <https://github.com/daten-krake/Sleipnir/pull/2>
-      (`contracts/a0-a2-conventions` → `main`, 13 files, +9056/−1, label
-      `agent-built`, verified OPEN at session close). The product owner must
-      answer **decisions D1–D9** and the 46-item confirm checklist in the PR
-      body; then the follow-up commit flips the statuses (WP-00 below).
+      (`contracts/a0-a2-conventions` → `main`, label `agent-built`, verified
+      OPEN at session close). The product owner reviews it and answers
+      **D2–D9** plus the 46-item confirm checklist. **D1 is already decided**
+      (2026-09-11) and recorded in `adr/ADR-0021-…` (**Proposed**) — accepting
+      the PR accepts that ADR. Then the follow-up commit flips the statuses
+      (WP-00 below).
 - [ ] Branch is pushed and the tree was clean at session close
       (`a58ba46` + the session-record commit). `git status` / `git fetch` first;
       local `main` may need a fast-forward after the merge.
@@ -45,9 +47,11 @@ where they resolve. They are audit trail, never normative references.
 
 1. **WP-00 — flip the freeze switch** (tiny PR): `Draft` → `Frozen` for A0/A1/A2
    in `contracts/README.md` **and** in each document's §1 header; record the
-   D1–D9 answers in the session tracker (and in an ADR if D1 or D2 is signed as
-   a change to Q11/Q2 — both narrow or change a locked decision, so an ADR is
-   the honest record; propose ADR-0021 for whichever is signed).
+   D2–D9 answers in the session tracker. **ADR-0021** (integrity override:
+   admin-only authority, *not* single-use, risk accepted by the service owner)
+   is already written and Proposed — it becomes Accepted with the PR merge. If
+   **D2** is signed (the Q2 confidence deviation), write **ADR-0022** for it and
+   rewrite A2 §6.13 from "PO signature required" to "decided".
 2. **Shared contract-test suite** (`contracts/README.md`, seven categories). It
    is the merge gate for every implementing package, so it comes first. The ~60
    test ids are already named inside the clauses they guard; the vectors are
@@ -74,8 +78,8 @@ where they resolve. They are audit trail, never normative references.
 ## 3. Definition of done for the next session
 
 - [ ] PR #2 merged, branch deleted, local `main` fast-forwarded.
-- [ ] WP-00 merged: A0/A1/A2 read `Frozen`; D1–D9 answers recorded (ADR if a
-      locked decision changed).
+- [ ] WP-00 merged: A0/A1/A2 read `Frozen`; ADR-0021 Accepted; D2–D9 answers
+      recorded (a new ADR for any that changes a locked decision).
 - [ ] Contract-test suite drafted as its own PR (or the first package landed
       with its tests) — `gofmt -l`, `go vet ./...`, `go build ./...`,
       `go test ./...` green, `go.mod` empty except pgx (ADR-0010).
@@ -100,7 +104,12 @@ where they resolve. They are audit trail, never normative references.
 
 ## 5. Carry-forward open questions
 
-- PR #2 **D1–D9** and the 46-item checklist (see the PR body).
+- PR #2 **D2–D9** and the 46-item checklist (see the PR body). **D1 decided**
+  2026-09-11 → ADR-0021: admin-only override, not single-use, residual risk
+  accepted by the service owner and compensated by the chained
+  `artifact_released` trail. Consequence to remember: **D5 (out-of-band head
+  anchoring) is now load-bearing**, not optional — the accepted risk assumes the
+  owner can see every release, which fails if the chain tail can be truncated.
 - Residual risk accepted at the freeze: engagement-assignment and
   credential-revocation audit → A5; no `evidence_removed` kind, so A1-8.8 is
   unimplementable until one exists; tail truncation open unless D5 approves the

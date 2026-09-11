@@ -105,7 +105,7 @@ Findings tracker (details in `docs/adversarial-review-2026-09-03.md`):
 | A12 cross-engagement leak | MED | **contracted** | A1-8.4/8.6, A2-11 + named negatives (`TestCursorFromEngagementARejectedInB`, `TestNoBulkEventReadSpansEngagements`, …); suite still to write |
 | A13 jailbreak vs safety | MED | accepted | covered by design |
 | A14 availability/DoS | LOW | flag | API design session; A1-6.8 rate-limits on-demand verification |
-| A15 insider abuse | LOW | flag | PR #2 **D1** (admin-only override), **D9** (assignment audit gap → A5) |
+| A15 insider abuse | LOW | **accepted** | ADR-0021: not mitigated by the platform for the integrity-override control; the service owner compensates with the chained `artifact_released` trail |
 
 Work items:
 - Worker egress policy = target scope only (A3) → ADR.
@@ -142,11 +142,13 @@ quarantine model from role matrix). Added 2026-09-04.
 - Offline capability of the Pi agent (session 4).
 - Which AD attack techniques are in/out of v1 tool registry scope
   (session with tool baseline).
-- **PR #2 decisions D1–D9** (2026-09-11): override authority + lifetime (narrows
-  Q11), the Q2 confidence deviation (needs a signature), `usr_`, the A0-7.10
-  view-cap composition rule (**blocks A3**), out-of-band head anchoring, no
+- **PR #2 decisions D2–D9** (2026-09-11): the Q2 confidence deviation (needs a
+  signature), `usr_`, the A0-7.10 view-cap composition rule (**blocks A3**),
+  out-of-band head anchoring (now load-bearing for ADR-0021's accepted risk), no
   operator release of quarantine, blacklisted discoveries recorded, reject vs
-  redact, and user/session audit ownership.
+  redact, and user/session audit ownership. **D1 is decided** → ADR-0021
+  (admin-only integrity override, *not* single-use, residual risk accepted by
+  the service owner and compensated by the chained `artifact_released` trail).
 - Known debt accepted at the freeze: engagement-assignment and
   credential-revocation audit belong to A5; no `evidence_removed` kind, so
   A1-8.8 stays unimplementable until one exists; `cvss_v3_x10` has no range

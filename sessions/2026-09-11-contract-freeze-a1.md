@@ -181,6 +181,16 @@
   consts, no stale counts, six sections per document, the six byte-identical
   paired blocks still identical, **no dangling clause reference among ~2650
   cross-document citations**, no raw U+2028/U+2029/U+007F in any table row.
+- **D1 decided by the product owner at session close** (2026-09-11) and applied:
+  `adr/ADR-0021-integrity-override-authority-and-lifetime.md` (**Proposed**)
+  records admin-only authority + a **not single-use** `export` override whose
+  residual risk is accepted and transferred to the service owner, compensated by
+  logging. A1-6.5, A1-6.6, A1-3.3, A1-3.5, A1-4.2, §4.1, §4.4 and §6 item 15
+  updated consistently (11 edits); `TestSingleUseOverride` replaced by
+  `TestEveryReleaseUnderOneOverrideIsChained` +
+  `TestReleaseWithoutLiveOverrideRefused`; the `(engagement_id,
+  override_event_id)` uniqueness constraint is gone. Verification re-run: 52
+  checks, 0 failures.
 - **PR #2 opened and verified**: <https://github.com/daten-krake/Sleipnir/pull/2>
   — OPEN, base `main`, 13 files, +9056/−1, label `agent-built`, body carrying the
   review trail, the integrator verification, the **nine decisions D1–D9**, the
@@ -191,13 +201,20 @@
 - **No new ADRs this session.** Every decision the reviews forced is either a
   contract clause (authority: ADR > SPEC > DESIGN > contract, and no clause
   contradicts an Accepted ADR) or a product-owner item in a document's §6.
-- **Two decisions narrow or change locked PO decisions and are flagged for
-  signature, not confirmation** (recorded as PR #2 items **D1** and **D2**):
-  A1-6.5 narrows Q11's "explicit operator override" to admin-role-only and makes
-  an export override single-use (adversarial C-01/S-07, insider threat A15);
-  A2-2.7/A2-5.6 implement Q2's "Finding carries confidence" as the mandatory
-  provenance grade instead of a finding field. Safe defaults are in the text;
-  neither document flips to `Frozen` until the product owner signs.
+- **D1 (integrity override) is DECIDED → ADR-0021 (Proposed, 2026-09-11):**
+  authority admin-only (SPEC §3, *not* the insider argument — the product owner
+  does not treat A15 as a v1 concern); lifetime **not single-use**, because a
+  per-artifact rule does not survive the long-term service vision; the residual
+  risk is accepted and transferred to the service owner who compensates with
+  logging. This narrows Q11's literal "operator override", so it is recorded as
+  an ADR rather than a contract note. It also makes **D5** (out-of-band head
+  anchoring) load-bearing: the "the owner can see everything" bargain requires
+  that the `artifact_released` trail cannot be truncated.
+- **D2 still needs the product owner's signature** (A2-2.7/A2-5.6 implement Q2's
+  "Finding carries confidence" as the provenance evidence grade instead of a
+  finding field — a change to a locked decision). To be answered in PR #2; if
+  signed it gets its own ADR (proposed number ADR-0022) and A2 §6.13 is
+  rewritten from "PO signature required" to "decided".
 - **AM-1 (`usr_`) resolved by default** (PR #2 item D3) — it was the single hard
   freeze blocker, claimed independently by A1 §6.2 and A2 §6.2. Registered in
   A0-1.2 + `KindUser`, *not* delegated to A5 (that would split A0-1.5 validation
@@ -220,9 +237,10 @@
 
 ## Open questions carried forward
 
-- **PR #2 needs the product owner**: decisions **D1–D9** (nine) plus the
-  46-item confirm checklist. On answers, flip A0/A1/A2 `Draft` → **Frozen** in
-  `contracts/README.md` and each document header (fix plan calls this WP-00).
+- **PR #2 needs the product owner**: **D2–D9** (D1 is decided → ADR-0021, which
+  the reviewer accepts by comment or merge) plus the 46-item confirm checklist.
+  On answers, flip A0/A1/A2 `Draft` → **Frozen** in `contracts/README.md` and
+  each document header (fix plan calls this WP-00).
 - **Shared contract-test suite** — now seven categories (`contracts/README.md`:
   the safety-path pairing bullet is new) and ~60 test ids are named inside the
   clauses they guard. This is the merge gate for every implementing package.
@@ -253,6 +271,6 @@
 
 | total input | uncached input | cache read | cache write | output | reasoning |
 |---|---|---|---|---|---|
-| 19470123 | 342699 | 19127424 | 0 | 138815 | 56662 |
+| 25660457 | 379817 | 25280640 | 0 | 161546 | 65508 |
 
 _(run `sessions/update-usage.sh sessions/2026-09-11-contract-freeze-a1.md` at session end)_
