@@ -1687,8 +1687,9 @@ A2-10.6 (`TestGraphSeamHasExactlyFourMutationMethods` /
 Recommendations that are genuinely product-owner calls. Each is marked **PO
 confirm** at the clause too; none is decided silently. A2 cites **current** A0
 throughout (A0-1.2's `usr_`, A0-7.1's registry rows, A0-3.6's `node_id`
-reservation); the four A0 amendment requests below were ruled in the Freeze
-triage and are recorded with their rulings, not left as open asks.
+reservation); the four A0 amendment requests below were ruled during the Freeze
+review (`docs/reviews/2026-09-11-contract-review-principal.md` §3) and are
+recorded with their rulings, not left as open asks.
 
 1. **A2-5.6 / A2-2.7 — confidence semantics.** Recommend the evidence grade
    `observed` · `inferred` · `verified` instead of `low`/`medium`/`high`.
@@ -1715,7 +1716,8 @@ triage and are recorded with their rulings, not left as open asks.
    the most valuable line in a customer report; refusing the write would leave
    the near-miss unprovable._ The alternative reading of ADR-0016 §2
    ("cannot be represented at all" = refuse the write) is defensible and
-   minimizes stored data about a forbidden system — PO call.
+   minimizes stored data about a forbidden system — PO call. **The Freeze
+   wording the product owner confirms is item 12.**
 4. **A2-8.7 — report exclusion by flag + event, not deletion.** Recommend
    `report_excluded` plus a mandatory A1 event; no graph delete endpoint in v1.
    _Deletion breaks `supersedes` chains, dangling `evidence_ids`, and the

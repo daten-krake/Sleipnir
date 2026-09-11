@@ -1256,7 +1256,7 @@ absorbed" — including every offline-node replay (ADR-0013).
   `TestExportIntegrityStateIsNotTheChainStateEnum`.
 
   _Residual risk printed here because the PO declined the out-of-band webhook
-  anchor (§6 item 16, PO-3): the Freeze ships the in-platform anchor only
+  anchor (§6 item 16): the Freeze ships the in-platform anchor only
   (`chain_head_trail`, A1-5.8). An attacker holding both store-write and
   log-write access on the same host — the default Docker deployment, SPEC §10 —
   can forge history and this metadata block with it. A customer who needs that
@@ -2755,8 +2755,8 @@ safety-test rule for the write path; A1 does not reach `Frozen` without them
 | **A0-5.6** | platform-recorded time is authoritative for ordering, verification, expiry and single-use checks | A1-1.4, A1-5.4 (`recorded_at` clamped non-decreasing), A1-6.1 (verification uses stored bytes and `seq`, not any client time), A1-8.1 (`occurred_claimed_at` orders nothing), A1-4.2 (`expires_at` platform-computed) |
 | **A0-5.7** | a client-supplied timestamp lives in a `*_claimed_at` field, never drives ordering/expiry/digests, and is stored next to `recorded_at` | A1-1.1 (`occurred_claimed_at`), A1-1.4, A1-4.12 (no payload timestamp is ever a claimed one), A1-5.2 (it **is** hashed, so it cannot be edited afterwards), A1-7.3 (the only client time in an append), A1-5.9 T3 |
 | **Adversarial T-01/T-02** | engagement lifecycle and artifact release are chainable facts, not side effects | A1-3.3 (`engagement_created` at `seq` 1, `engagement_closed`, `artifact_released`), A1-3.5 (additive), A1-3.7 (SPEC §5 steps 1 and 9), A1-4.2 (the three obligations rows), A1-6.6 (the export path composes `artifact_released`), §4.1 (three new `Kind` consts, 42 total), A1-4.5 (`TestMaximalPayloadFitsCanonicalBound` over 42 kinds), A1-4.4 (`TestKindListIs42AndClosed`) |
-| **Adversarial C-01/S-07 (§1 PO-1)** | override authority is admin-only and an `export` override is single-use | A1-6.5 (both blocks), A1-3.3 (`artifact_released.override_event_id`), A1-4.2 (`override_event_id` non-empty iff `failed_overridden`), A1-6.6 (release record uniqueness), §6 item 15 |
-| **Principal S-02/P-37 (§1 PO-3)** | the head hash is anchored out-of-band in a store the event role cannot rewrite | A1-5.8 (`chain_head_trail`, `REVOKE UPDATE, DELETE`, 100-`seq` interval), A1-3.3 (`break_kind:head_regression`), A1-6.3 (the `head_regression` row), A1-6.2 (startup compares against the trail), A1-6.6 (residual-risk wording), §4.1 (`HeadLogIntervalSeq = 100`), §6 item 16 |
+| **Adversarial C-01/S-07 (§6 item 15)** | override authority is admin-only and an `export` override is single-use | A1-6.5 (both blocks), A1-3.3 (`artifact_released.override_event_id`), A1-4.2 (`override_event_id` non-empty iff `failed_overridden`), A1-6.6 (release record uniqueness), §6 item 15 |
+| **Principal S-02/P-37 (§6 item 16)** | the head hash is anchored out-of-band in a store the event role cannot rewrite | A1-5.8 (`chain_head_trail`, `REVOKE UPDATE, DELETE`, 100-`seq` interval), A1-3.3 (`break_kind:head_regression`), A1-6.3 (the `head_regression` row), A1-6.2 (startup compares against the trail), A1-6.6 (residual-risk wording), §4.1 (`HeadLogIntervalSeq = 100`), §6 item 16 |
 | **Principal P-13/P-32, adversarial T-07** | the `recorded_at` forward clamp is byte-wise, bounded, and its state lives on the chain head | A1-5.4 (byte-wise comparison, 1000 ms bound), A1-5.6 (`LastRecordedAt`, `LastBreakSeq`, `LastBreakKind`, `LastBreakEventID`), A1-6.3 (break-dedup state), §4.1 (`ChainHead`) |
 | **Principal P-09** | a refused append during the startup walk is retryable, not a defect | A1-7.5 (`timeout` row + the `internal` reservation), A1-7.11 (retry reuses `idempotency_key`; the one retryable write), A1-6.2 (`unverified`) |
 | **Principal P-97/E-03/S-13** | the kill path is durable without being blocking | A1-7.12 (durable outbox, `REVOKE UPDATE, DELETE`, startup drain, UI warning), A1-6.4 (the integrity-warning carrier), A1-6.5 (override tests), A1-4.2 (`container_killed.stop_event_id`) |
@@ -2850,13 +2850,15 @@ amendment requests (AM-1…AM-4) is independent of A2's.
    (insider abuse)), or make an override time-boxed (needs a clock-driven expiry inside a
    safety decision). _Q11 says "explicit operator override … logged as event";
    "operator" there reads as "human", and SPEC §3 puts integrity-class controls
-   with the admin, next to the hard stop. **PO confirm**._
+   with the admin, next to the hard stop. **PO confirm** — the wording the
+   product owner signs is item 15._
 7. **A1-5.8 — tail truncation needs an anchor outside the store. This one needs
    a decision, not a confirmation.** Deleting the last *k* rows and updating the
    chain-head state leaves a self-consistent chain; no hash chain detects that
    from inside. v1 already mandates the internal mitigations (no update/delete
    on the seam, head hash emitted to `slog` at every verification and every
-   1000 `seq`, head hash embedded in every delivered export). Recommendation:
+   **100** `seq` (A1-5.8, `HeadLogIntervalSeq`), head hash embedded in every
+   delivered export). Recommendation:
    **also** deliver `(engagement_id, head_seq, head_hash)` over the ADR-0012 §3
    signed webhook at those same points — a customer-side or SIEM-side copy that
    a store-only attacker cannot reach, for roughly twenty lines of code and no
@@ -2864,7 +2866,8 @@ amendment requests (AM-1…AM-4) is independent of A2's.
    head-hash anchoring, and it is the only v1 mechanism that closes the
    truncation case. If the PO prefers to stay strictly inside Q11, the residual
    risk must be written into the report's own integrity wording. **PO
-   decision**._
+   decision** — the Freeze default and the residual risk the product owner
+   decides on are item 16._
 8. **A1-7.4 / A1-8.4 — the orchestrator gets neither `events:append` nor a log
    read scope in v1.** Every orchestrator-originated occurrence already has a
    platform-composed kind (`spawn_requested` through the broker,
