@@ -13,6 +13,18 @@ without bloating context.
 - Schema of handover artifacts (findings list, hypotheses, evidence refs).
 - What the orchestrator sees vs. what stays in the event store.
 - Size limits; summarization duties of workers.
+- 2026-09-11: the seam is contracted — **A2-12** (what A3 may rely on) plus
+  A1-8 (read/SSE guarantees) and the A0-7 cap registry. **A3 is blocked on the
+  A0-7.10 composition rule** (PR #2 decision **D4**: 500 × 512 B ≈ 250 KiB ≫ the
+  64 KiB view cap; interim fail-safe = the smaller cap governs and the builder
+  truncates). Q1's fixed-stage-views + capped-1-hop design stands; the
+  `internal/handoff` placement question falls out of A3, not A1/A2.
+- 2026-09-21: **A3 is unblocked.** D4 was confirmed by the product owner
+  (PR #2): the interim fail-safe stands as the frozen rule, and **A3 owns the
+  real composition rule** — ~131 B per node is not a usable view, so A3 MUST
+  design compact refs with full summaries only in the capped 1-hop drill-down.
+  A3 must additionally budget bytes for the provenance evidence grade that
+  ADR-0022 puts on every node and edge.
 
 ### 2. Program layout (Go module structure)
 Package layout of the monorepo given stdlib-only + pgx exception.
@@ -24,6 +36,31 @@ Package layout of the monorepo given stdlib-only + pgx exception.
 - 2026-09-04: layout + design guidelines are normative in **`DESIGN.md`**
   (product owner: layout is a guideline doc, not an ADR); scaffold +
   `internal/errs` = first PR.
+- 2026-09-07: contract documents live in top-level **`contracts/`**
+  (`README.md` = lifecycle, document shape, shared contract-test merge
+  gate); A0 conventions + A1 events + A2 graph drafted as one PR
+  (`contracts/a0-a2-conventions`). A3–A8 fan-out briefs next session.
+- 2026-09-11: **A0–A2 completed, reviewed twice, fixed and opened as PR #2**
+  (13 files, +9056). A1 grew to 42 event kinds, A0 to eight canonical-JSON
+  vectors and six foundation packages (`ids`, `cjson`, `errs`, `paging`,
+  `timex`, `caps`), A2 gained the closed secret-scan rule table and normative
+  content-fingerprint vectors. 162 review findings, **63 MUST FIX applied**;
+  review reports + fix plan committed under `docs/reviews/`. Nine product-owner
+  decisions (**D1–D9**) and a 46-item confirm checklist are in the PR body;
+  the documents stay `Draft` until they are answered, then flip to `Frozen`
+  (WP-00). Next code work: the shared contract-test suite (now **seven**
+  categories, ~60 test ids named in the clauses they guard), then scaffold +
+  `internal/errs` + `internal/logging`, then the foundation packages in the
+  order the principal review's §4 proposes.
+- 2026-09-21: **A0/A1/A2 are `Frozen`** (PR #2, product owner decisions D1–D9 +
+  all three blocks of the 46-item confirm checklist). WP-00 flipped the
+  statuses, turned every one of the 51 `PO confirm`/`PO decision`/`PO signature`
+  markers into a decision record, made the **D5 signed-webhook head anchor
+  normative** (A1-5.8 mitigation (4), new `notification_kind:chain_head_anchor`),
+  and added **ADR-0022** (D2's signature: the provenance evidence grade replaces
+  Q2's finding-level `confidence`); ADR-0021 became Accepted. Next: **WP-01**,
+  the repo scaffold + `internal/errs` + `internal/logging` with their contract
+  tests (`next_steps.md` §3 allows the first package to land with its tests).
 - 2026-09-04 (design interview): **all session-1 decisions locked** —
   fixed stage views + capped 1-hop (no query endpoint v1); two node types
   Finding/Hypothesis; hard-reject validation; size budgets as contract
@@ -69,21 +106,21 @@ Findings tracker (details in `docs/adversarial-review-2026-09-03.md`):
 
 | Finding | Severity | Class | Tracked in |
 |---------|----------|-------|------------|
-| A1 prompt injection | CRIT | flag | this session |
-| A2 runtime escalation | CRIT | ✅ decided | ADR-0017 Accepted |
-| A3 worker egress | CRIT | flag | this session → own ADR |
-| A4 LLM data leak | HIGH | ✅ decided | ADR-0020 Accepted (masking + gateway) |
-| A5 approval manipulation | HIGH | ✅ decided | ADR-0018 Accepted |
-| A6 API credentials | HIGH | flag | this session + API design |
-| A7 node theft/impersonation | HIGH | flag | this session + session 4 |
-| A8 stored credentials | HIGH | flag | this session + session 6 |
-| A9 own-web attacks | MED | flag | this session + AGENTS.md review bar |
-| A10 tool supply chain | MED | flag | this session + tool-registry work |
-| A11 evidence tampering | MED | flag | session 6 (hash-chained log) |
-| A12 cross-engagement leak | MED | flag | API contract test suite |
+| A1 prompt injection | CRIT | flag | contracted: A1-4.4 untrusted marking (platform-computed, `UntrustedFields`), A1-4.9 + A2-9 secret scan, ADR-0018 §4 approval-view flag; rendering rules still open (UI session) |
+| A2 runtime escalation | CRIT | ✅ decided | ADR-0017 Accepted; write path contracted in A1-7.1/7.4 (platform-only composition) |
+| A3 worker egress | CRIT | flag | this session → own ADR; A1-4.9/A2-9.3 make gateway exclusion the enforcement point |
+| A4 LLM data leak | HIGH | ✅ decided | ADR-0020 Accepted (masking + gateway); `llm_call` is the egress log, metadata only (A1-4.2) |
+| A5 approval manipulation | HIGH | ✅ decided | ADR-0018 Accepted; A1-3.3/4.2 store the action spec as a chained artifact and bind `fingerprint_hash` + `expires_at` |
+| A6 API credentials | HIGH | flag | A5 (machine-principal exclusion list derived from A1-7.4/A1-8.4) |
+| A7 node theft/impersonation | HIGH | flag | this session + session 4; `slp_node_` id shape and buffering/replay contracted (A1-7.6/7.11) |
+| A8 stored credentials | HIGH | flag | this session + session 6; A2-9 no-secret-values + the closed rule table |
+| A9 own-web attacks | MED | flag | this session + AGENTS.md review bar; untrusted content never becomes configuration (A1-4.4, A2-6.7) |
+| A10 tool supply chain | MED | flag | this session + tool-registry work; `image_digest` is registry-derived, never orchestrator-supplied |
+| A11 evidence tampering | MED | **contracted** | A1-5 (per-engagement chain, genesis, `chain_spec`), A1-6 (verification, `integrity_failed`, admin-only override per ADR-0021), `chain_head_trail` + `head_regression`, **and the out-of-band signed-webhook head anchor of A1-5.8 (4)** (D5 approved 2026-09-21); **residual, narrowed not closed:** an attacker with store-write *and* log-write on one host can still forge history and suppress a delivery, but suppression is visible to the webhook recipient as a head that stops advancing — detection depends on that recipient retaining and comparing its anchors (A1-6.6) |
+| A12 cross-engagement leak | MED | **contracted** | A1-8.4/8.6, A2-11 + named negatives (`TestCursorFromEngagementARejectedInB`, `TestNoBulkEventReadSpansEngagements`, …); suite still to write |
 | A13 jailbreak vs safety | MED | accepted | covered by design |
-| A14 availability/DoS | LOW | flag | API design session |
-| A15 insider abuse | LOW | flag | later (four-eyes option) |
+| A14 availability/DoS | LOW | flag | API design session; A1-6.8 rate-limits on-demand verification |
+| A15 insider abuse | LOW | **accepted** | ADR-0021: not mitigated by the platform for the integrity-override control; the service owner compensates with the chained `artifact_released` trail |
 
 Work items:
 - Worker egress policy = target scope only (A3) → ADR.
@@ -103,6 +140,14 @@ OIDC/JWT client, high-review bar).
 From PR gate to release: build (stdlib + vendored, reproducible), the
 WORKFLOW.md gates as pipeline steps, container image build/pin/sign
 pipeline (adversarial A10), versioning, rollback. Added 2026-09-04.
+- **2026-09-21, product owner: add CI *before* the first code package, not
+  after.** The repo has no `.github/workflows/`, so the WORKFLOW §4 merge gate
+  (`gofmt -l`, `go vet ./...`, `go build ./...`, `go test ./...`, `go mod
+  verify`) is currently unenforced and becomes load-bearing the moment
+  `internal/errs` lands. Scope for the first pipeline: those five gates on a
+  pinned Go toolchain, stdlib-only + `vendor/` consistency, and the
+  `docs/reviews/*-verify-vectors.py` contract-vector check for any PR touching
+  `contracts/`. Image build/pin/sign (A10) stays a later item.
 
 ### 10. Monitoring & observability
 Slog JSON export (ADR-0019 structure), health endpoints, per-run
@@ -120,10 +165,49 @@ quarantine model from role matrix). Added 2026-09-04.
 - Offline capability of the Pi agent (session 4).
 - Which AD attack techniques are in/out of v1 tool registry scope
   (session with tool baseline).
-- Handling of quarantined out-of-scope discoveries (ADR-0016 follow-up).
+- **Where attribute-level redaction lives** (new 2026-09-21, → §10): DESIGN §1
+  gives `logging` zero internal imports, so it cannot call `errs`' redaction
+  helpers. WP-01's ruling: `errs` owns redaction of error strings (`errs.Secret`
+  is leak-proof under every `fmt` verb and both encoders), `logging` takes only
+  caller-supplied correlation ids, and the `api` handler — which may import both
+  — is the only place a kind and a redacted attribute meet a log record. If the
+  observability session wants redaction enforced *inside* `logging`, that needs
+  a DESIGN §1 amendment or a third foundation package.
+- Known debt accepted at the freeze (2026-09-21): engagement-assignment and
+  credential-revocation audit belong to A5; no `evidence_removed` kind, so
+  A1-8.8 stays unimplementable until one exists; A1 §4.2 has no approval-path
+  JSON example (E-08); **`cvss_v3_x10` has no declared range** — the product
+  owner explicitly declined to declare one (2026-09-21), and because adding
+  `[0,100]` later *narrows* an accepted value set it is **not additive-safe**
+  (A0-6.5) and will need an ADR (A0-7.2).
+- **ADR-0022 follow-ups** (2026-09-21): the report and UI sessions MUST render
+  the provenance evidence grade itself, never a re-invented adjective, and MUST
+  show the provenance entries behind a `verified` grade; a *numeric* confidence
+  would reopen the two-sources problem ADR-0022 closes and needs its own ADR.
+- Store-seam duties the contracts hand to backlog §6: the per-engagement append
+  lock (A1-5.4), dedup table (A1-7.6), ingest watermark (A1-7.7),
+  `chain_head_trail` and the kill outbox with `REVOKE UPDATE, DELETE`, and any
+  checkpoint/re-genesis mechanism (A1-6.9 — needs its own ADR).
 
 ## Resolved (kept for history)
 
+- ~~**PR #2 decisions D1–D9**~~ → all answered by the product owner 2026-09-21
+  (PR #2 body edit + session), A0/A1/A2 `Frozen`: **D1** admin-only integrity
+  override, *not* single-use → **ADR-0021 Accepted**; **D2 signed** →
+  **ADR-0022** (the provenance evidence grade `observed·inferred·verified`
+  replaces Q2's finding-level `confidence`); **D3** `usr_` registered in A0-1.2 +
+  `KindUser`; **D4** the interim fail-safe stands, A3 owns the real composition
+  rule; **D5 approved** — the ADR-0012 §3 signed-webhook head anchor is
+  normative (A1-5.8 (4)), which discharges ADR-0021's load-bearing follow-up;
+  **D6** no operator release of quarantine; **D7** blacklisted discoveries
+  recorded, not refused; **D8** reject, never redact; **D9** user/session audit
+  → A5 in a platform-scoped store. Plus all three blocks of the 46-item confirm
+  checklist (A0 §6.1–13, A1 §6.1,3,5–14, A2 §6.4–11).
 - ~~Approval timeout~~ → 2h default, configurable per engagement (ADR-0012).
 - ~~Notification channel priority~~ → signed webhooks only for v1 (ADR-0012).
 - ~~Embedded coding-agent harness~~ → own loop confirmed (ADR-0015).
+- ~~Handling of quarantined out-of-scope discoveries~~ → Q5 (2026-09-04):
+  included in the reporting handover marked *not tested*, non-actionable,
+  operator can exclude them from the report; contract clause in A2.
+- ~~`qwen3.8-flash` availability for `sleipnir-implementer`~~ → verified
+  2026-09-07 (smoke test ran; provider `qwen-token-plan`).

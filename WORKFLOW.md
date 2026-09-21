@@ -26,6 +26,25 @@ Effective 2026-09-03 (decision by the product owner):
    architectural judgment.
 6. ADRs follow the same PR flow: proposed in the PR, accepted by the
    product owner's review comment/merge.
+7. **PR creation from the agent environment** (verified 2026-09-07): the
+   Linux `gh` binary is not authenticated here, and the configured git
+   credential helper — the Windows GitHub CLI at
+   `/mnt/c/Program Files/GitHub CLI/gh.exe` — is authenticated but cannot
+   operate on this WSL checkout (`detected dubious ownership`). Push with
+   git, then create/label the PR with the Linux `gh` using the Windows
+   token:
+
+   ```sh
+   git push -u origin <branch>
+   GH_TOKEN=$('/mnt/c/Program Files/GitHub CLI/gh.exe' auth token) \
+     gh pr create --repo daten-krake/Sleipnir --base main --head <branch> \
+       --title '<title>' --body-file <body.md> --label agent-built
+   ```
+
+   The token is read per command and never written to a file, committed, or
+   logged (ADR-0019 §5). GitHub does not support push options
+   (`-o pull_request.create`); verify the returned PR URL exists before
+   closing the session.
 
 **One-time exception:** the 2026-09-03 architecture kickoff session was
 pushed directly to `main` (explicitly allowed by the product owner).

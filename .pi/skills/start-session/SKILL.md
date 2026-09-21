@@ -1,6 +1,6 @@
 ---
 name: start-session
-description: Start a new Sleipnir working session. Use when the user wants to start the next session, says "start session", or asks to pick up work in this repository. Triggers the session ritual: check housekeeping, read the normative context in the fixed order, collect all open tasks and questions, report them, then open the session tracker. Also defines how to close a session.
+description: 'Start a new Sleipnir working session. Use when the user wants to start the next session, says "start session", or asks to pick up work in this repository. Triggers the session ritual: check housekeeping, read the normative context in the fixed order, collect all open tasks and questions, report them, then open the session tracker. Also defines how to close a session.'
 ---
 
 # Sleipnir session lifecycle
