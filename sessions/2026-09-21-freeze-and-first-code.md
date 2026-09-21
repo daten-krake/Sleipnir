@@ -163,10 +163,39 @@ product owner decision recorded in a session tracker**).
   under a hard cap (`ulimit -v 3G`, `GOMEMLIMIT=1GiB`, `-timeout 120s`):
   `gofmt -l`, `go vet ./...`, `go build ./...`, `go test ./...` all green
   (`errs` 0.006s, `logging` 0.005s).
-- Lost with `/tmp`: the three lanes' scratch output (`/tmp/wp01/*-log.md`,
-  the `fix-ci` negative/positive vector fixtures). The `fix-errs` and
-  `fix-ci` lanes must be re-run; their findings are summarised above and in
-  `AGENTS.md`, but the code changes were never applied.
+- **Recovery audit corrected the first assessment: no code was lost.** Every
+  finding's change had landed before the kill — E-a's cap and
+  `TestErrorChainWalkIsBounded` (with the §8 goroutine-plus-`select` helper, the
+  32/33 boundary rows, and the envelope and `slog` conversions pinned too),
+  L-d's `slog.Default()` fallback and its test, and all of C-c/C-d/C-e/C-f plus
+  the C-a/b allowlist sentence. Both lanes died during *verification*, not
+  implementation. What `/tmp` took was the implementers' logs
+  (`/tmp/wp01/*-log.md`) and their fixtures — the evidence, not the changes.
+- One consequence was worse than lost evidence: `ci.yml` already carried the
+  comment "both claims re-verified against corrupted copies under `/tmp`",
+  written by a lane that was killed while building exactly those copies. An
+  unexecuted verification asserted as done is a defect in its own right.
+- **Verification re-run for all three findings, entirely against copies outside
+  the repo** (`/tmp/prove-errs`, `/tmp/prove-ci`, real files never touched):
+  - *E-a, the proof that killed the box.* Cap intact: `ok` in 0.002s. Cap
+    short-circuited to `if false && depth == maxChainDepth`: `runtime: out of
+    memory` → `fatal error` → FAIL, contained to **139 MB peak RSS in 0.32s**
+    under `ulimit -v 2G` — against the 11.4 GB that took the VM down. The test
+    is therefore not vacuous, and the bound is what makes it safe to run.
+  - *C-f.* Untouched contract: `PASS 52 / FAIL 0`, exit 0. Tampering the
+    published digest, the published length, or the preimage each yields
+    `PASS 51 / FAIL 1`, exit 1 — precisely what the comment claims, so the
+    comment is now true rather than merely asserted. The vacuous shape
+    (`PASS 0 / FAIL 0`, exit 0) is caught **only** by the summary grep, which
+    confirms assertion 2 is load-bearing and not redundant with the exit code.
+  - *C-e.* Eight offender fixtures (`deploy.pem`, nested `config/id_rsa`,
+    `signing.key`, `gh.token`, `docs/notes.md~`, `ci.yml.orig`, `patch.rej`)
+    each fail the step; a clean tree and four near-miss names (`pemfile.md`,
+    `apikey.go`, `keyboard.svg`, `tokenising.md`) pass, so the pattern does not
+    false-positive on ordinary files; the real repo passes.
+- Still owed, and not recoverable: the three implementers' own log files, i.e.
+  their deviation notes. The rulings those notes recorded are transcribed into
+  §Decisions below so the tracker is the durable record.
 - Rule added to `AGENTS.md`: a negative test is proved by asserting the
   bound's *effect*, never by removing the bound and executing the path.
 
@@ -221,7 +250,30 @@ product owner decision recorded in a session tracker**).
   `errs.New(msg)` but also requires kinds "attached at creation", and a kind
   parameter is the only way both hold. `Wrap`/`Wrapf` keep the ADR's signature
   and **inherit** the cause's kind, so wrapping can never silently reclassify an
-  error. Recorded in WP-01's brief and to be recorded in the package doc comment.
+  error. Recorded in WP-01's brief and now in the package doc comment
+  (`internal/errs/errs.go`), so the ruling outlives the brief.
+- **`Error()` bounds its cause-chain walk at 32 layers** (principal overrules
+  the implementer, finding E-a). The implementer judged a depth cap speculative
+  under DESIGN §2's simplicity rule, and noted correctly that the exported
+  `Error` fields make a hand-built cycle (`e.Err = e`) reachable. Overruled:
+  `Error()` sits on every log record and every `/api/v1` envelope, so an
+  unbounded walk is an availability hazard (adversarial A14) and a documented
+  hazard is not a hypothetical one — guarding it is defensive, not speculative.
+  The cap reuses A0-2.11 `MaxDepth` (32) so one constant means the same thing
+  everywhere it bounds an untrusted structure, and hitting it appends a segment
+  naming the truncation rather than ending silently, keeping the rendered string
+  diagnosable. `truncationNotice()` derives its number from the same constant,
+  so the message can never disagree with the cap applied.
+- **A nil logger falls back to `slog.Default()` — neither panic nor drop**
+  (principal rules a third way, finding L-d). The implementer made
+  `ErrorRecord` panic on a nil logger so the record could not be silently
+  dropped. Both horns are wrong: panicking violates ADR-0019 §6 (panics are for
+  programmer-invariant violations at startup, never error transport on a live
+  path, and a nil logger reaches `ErrorRecord` from request handlers), while
+  dropping the record breaks the audit premise the platform exists on. The
+  stdlib guarantees `slog.Default()` is never nil, so the record is always
+  written and surfaces on the default handler's output — which is how the wiring
+  defect becomes visible. A safety net, not a supported way to obtain a logger.
 - **CI rides in WP-01's PR**, not its own: it is the PR that first needs it, and
   the workflow's Go steps are guarded by `hashFiles('go.mod')` so doc-only and
   contract-only branches stay green. It gates the five WORKFLOW §4 commands, an
