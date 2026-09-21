@@ -61,6 +61,21 @@ Package layout of the monorepo given stdlib-only + pgx exception.
   Q2's finding-level `confidence`); ADR-0021 became Accepted. Next: **WP-01**,
   the repo scaffold + `internal/errs` + `internal/logging` with their contract
   tests (`next_steps.md` §3 allows the first package to land with its tests).
+- 2026-09-21: **WP-01 delivered** — `go.mod` (module
+  `github.com/daten-krake/sleipnir`, Go 1.27, zero requires so ADR-0010 holds
+  trivially), `internal/errs` (6 files, 22 test ids) and `internal/logging`
+  (3 files, 15 test ids). Two rulings the implementers forced, both recorded in
+  the session tracker: **E-a** `Error()` bounds its cause-chain walk at
+  A0-2.11's 32 layers and names the truncation — the exported fields make a
+  cycle reachable and `Error()` rides every log record and every `/api/v1`
+  envelope, so an unbounded walk is an adversarial-A14 availability hazard, and
+  the principal overruled "a depth cap is speculative under DESIGN §2"; **L-d**
+  a nil logger falls back to `slog.Default()`, never panicking (ADR-0019 §6) and
+  never dropping the record (ADR-0019 §3). `logging`'s zero-internal-imports
+  boundary is enforced mechanically, by two tests that parse its own source
+  rather than trusting a reviewer. Next: the remaining foundation packages in
+  the principal review §4's order (`ids`, `cjson`, `paging`, `timex`, `caps`),
+  then the shared contract-test suite.
 - 2026-09-04 (design interview): **all session-1 decisions locked** —
   fixed stage views + capped 1-hop (no query endpoint v1); two node types
   Finding/Hypothesis; hard-reject validation; size budgets as contract
@@ -148,6 +163,26 @@ pipeline (adversarial A10), versioning, rollback. Added 2026-09-04.
   pinned Go toolchain, stdlib-only + `vendor/` consistency, and the
   `docs/reviews/*-verify-vectors.py` contract-vector check for any PR touching
   `contracts/`. Image build/pin/sign (A10) stays a later item.
+- **2026-09-21: the first pipeline landed with WP-01**
+  (`.github/workflows/ci.yml`, three jobs), meeting the "before, not after"
+  directive. `detect` asserts the preconditions so the gates cannot silently
+  no-op on a branch that removed them. `go-gates` runs the five §4 commands plus
+  `go test -race` on the toolchain `go.mod` pins, with an ADR-0010 §2 dependency
+  check that fails closed on any import or require outside the exception list
+  (prefixes match exactly or as a subpackage, so `pgxfoo` cannot ride in on
+  `pgx`) and `go mod verify` + `vendor/` consistency. `contracts` recomputes
+  every published vector and asserts **both** a clean exit and a
+  `PASS n>=1 / FAIL 0` summary line — the grep is load-bearing, because a
+  verifier whose regexes stopped matching computes zero checks, fails nothing
+  and exits 0, which is how I-02 got introduced — rejects raw U+2028/9/7F in
+  table rows, and fails on a tracked credential-looking file *name* (never
+  contents, which would copy secret material into the log ADR-0019 §5 protects).
+  Triggers are `pull_request`/`push` on `main` only, so a feature branch does
+  not run it and the pipeline's own first execution is the PR that adds it.
+  `docs/reviews/2026-09-21-ci-gate-fixtures.sh` (16 fixtures, step bodies
+  transcribed verbatim, mutating only copies under `$TMPDIR`) is the negative
+  proof that those assertions bite. Image build/pin/sign stays A10, and so does
+  full-SHA action pinning — the actions say so rather than leaving it implicit.
 
 ### 10. Monitoring & observability
 Slog JSON export (ADR-0019 structure), health endpoints, per-run
@@ -173,6 +208,16 @@ quarantine model from role matrix). Added 2026-09-04.
   — is the only place a kind and a redacted attribute meet a log record. If the
   observability session wants redaction enforced *inside* `logging`, that needs
   a DESIGN §1 amendment or a third foundation package.
+- **Whether ADR-0019 needs an amendment note for A0-3.6's attribute spelling**
+  (new 2026-09-21, product owner): ADRs are immutable once Accepted, and
+  ADR-0019 §3's literal reading still says `engagement`/`run`/`job`/`node`
+  while frozen A0-3.6 rules `engagement_id`/`run_id`/`job_id`/`node_id` — where
+  `node_id` is the *remote agent node* (`slp_node_`) and a graph node is
+  `graph_node_id` (`gn_`), which must never be conflated. WP-01.2 treats this as
+  a naming clarification of an Accepted ADR by a frozen contract rather than a
+  new decision, so no new ADR was raised; the deviation is recorded in the
+  `logging` package doc comment and promoted into `AGENTS.md`. A ruling is
+  needed on whether the ADR should also carry a note.
 - Known debt accepted at the freeze (2026-09-21): engagement-assignment and
   credential-revocation audit belong to A5; no `evidence_removed` kind, so
   A1-8.8 stays unimplementable until one exists; A1 §4.2 has no approval-path
