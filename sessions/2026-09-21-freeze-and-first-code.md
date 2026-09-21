@@ -119,8 +119,74 @@ product owner decision recorded in a session tracker**).
   U+2028/9/7F in table rows, 42 `Kind` constants, and `chain_head_anchor` proven
   *not* to have leaked into the `Kind` block.
 
+### PR #2 merged, WP-01 delegated
+
+- **PR #2 MERGED** 2026-09-21T08:33:33Z (merge commit `7ad14e2`, 18 files).
+  A0/A1/A2 are `Frozen` **on `main`**, ADR-0021 and ADR-0022 are Accepted. Local
+  `main` fast-forwarded; `contracts/a0-a2-conventions` deleted locally and on the
+  remote. This is what unblocks code (`contracts/README.md`: no code against a
+  `Draft`).
+- Review note posted on the PR before the merge, recording how each tick was
+  read and what the three explicit answers changed. The PO's body text was left
+  untouched.
+- **WP-01 cut as three super-minimal packages** (WORKFLOW §5) and delegated to
+  `sleipnir-implementer`, one directory each: **WP-01.1** `internal/errs`
+  (verify the draft, write `redact.go` + 18 named test ids) · **WP-01.2**
+  `internal/logging` (3 files, 11 test ids including two that mechanically prove
+  the DESIGN §1 zero-internal-imports boundary) · **WP-01.3**
+  `.github/workflows/ci.yml`.
+
+### WP-01 review pass, and the OOM that ended the session
+
+- The three implementers reviewed **my** drafts and found real defects — which
+  is what WORKFLOW §5's independent check is for. Two of them (the `slog`
+  JSON-handler/`fmt`-verb redaction rule and the nil-logger fallback) are
+  binding conventions, so they were promoted into `AGENTS.md` rather than left
+  in a package comment.
+- Review fixes were dispatched at 09:25:13Z as three one-writer-per-directory
+  lanes: `fix-errs` (bound the `Error()` walk), `fix-logging`, `fix-ci`
+  (dependency-allowlist findings). They did not complete.
+- **Incident: the session was lost to a kernel OOM kill, not to an agent
+  error.** At 11:36:58 CEST the `fix-errs` implementer, proving that
+  `TestErrorChainWalkIsBounded` can fail, short-circuited the guard to
+  `if false && depth == maxChainDepth { // BYPASS PROOF` in the working tree,
+  backed the original up to `/tmp/errs.go.bak`, and ran the test. With the cap
+  gone the cyclic-chain cases appended to a `strings.Builder` without bound:
+  `errs.test` reached **11.4 GB anon-rss / 21 GB total-vm** on an 11 GiB WSL2
+  VM, `all_unreclaimable? yes`, and the kernel killed it. The VM went down at
+  11:37:54 (`init.scope: Stopping timed out. Killing.`) and both in-flight
+  children took SIGTERM (`exit=143`). Reboot 11:40:48.
+- **Recovery (this commit).** `/tmp` did not survive the reboot, so the backup
+  was gone and the disabled guard was still in the tree — one `go test
+  ./internal/errs/` away from repeating the crash. The cap is restored, no
+  other mutation marker survives a repo-wide grep, and the gates were re-run
+  under a hard cap (`ulimit -v 3G`, `GOMEMLIMIT=1GiB`, `-timeout 120s`):
+  `gofmt -l`, `go vet ./...`, `go build ./...`, `go test ./...` all green
+  (`errs` 0.006s, `logging` 0.005s).
+- Lost with `/tmp`: the three lanes' scratch output (`/tmp/wp01/*-log.md`,
+  the `fix-ci` negative/positive vector fixtures). The `fix-errs` and
+  `fix-ci` lanes must be re-run; their findings are summarised above and in
+  `AGENTS.md`, but the code changes were never applied.
+- Rule added to `AGENTS.md`: a negative test is proved by asserting the
+  bound's *effect*, never by removing the bound and executing the path.
+
 ### Process
 
+- **Product-owner catch (2026-09-21): the principal drifted into implementer
+  work.** After the merge I began typing `internal/errs` myself — four files,
+  ~355 lines — instead of decomposing and delegating per WORKFLOW §5. Two
+  defects, not one: the principal was doing an implementer's job, **and** the
+  package I had briefed bundled four concerns (scaffold + `errs` + `logging` +
+  CI), which is exactly what "super-minimal" forbids. Corrected by splitting
+  WP-01 into three one-concern packages with disjoint directories.
+- The drafted files were **not** laundered into done work: they are handed to
+  the implementer explicitly labelled "a principal's draft, not accepted work",
+  with instructions to verify every line against A0-3/ADR-0019 and fix or
+  rewrite what is wrong, and to report defects as a success. This keeps the two
+  architectural rulings I made (`New(kind, msg)`; `OpOf` existing so `logging`
+  needs no internal import) under independent check instead of self-approved.
+  Baseline before handover: `gofmt -l`, `go vet ./...`, `go build ./...` all
+  clean, so any breakage is attributable.
 - Session ritual completed: SPEC → `adr/` (README + ADR-0021, the only
   Proposed; other 20 Accepted) → DESIGN → BACKLOG → AGENTS/WORKFLOW.
 - Housekeeping: tree clean, branch in sync with origin, local `main` ==
@@ -162,6 +228,17 @@ product owner decision recorded in a session tracker**).
   **ADR-0010 dependency check that fails closed** on any non-pgx require, the
   contract-vector recomputation for PRs touching `contracts/`, and the I-02
   U+2028/9 check.
+- **Attribute spelling: A0-3.6 beats ADR-0019 §3** (ruled for WP-01.2, to be
+  ratified). ADR-0019 §3 names the correlation attributes `engagement`, `run`,
+  `job`, `node`; frozen A0-3.6 rules `engagement_id`, `run_id`, `job_id`,
+  `node_id` and says why — `node_id` is the *remote agent node* (`slp_node_`)
+  while a graph node is `graph_node_id` (`gn_`), and the two MUST NOT be
+  conflated. A0-3.6 already notes that ADR-0019 §3's "node" predates ADR-0016's
+  graph vocabulary. Treated as a **naming clarification of an Accepted ADR by a
+  frozen contract**, not a new decision, so no new ADR; the deviation is recorded
+  in the `logging` package doc comment. **Open for the product owner:** whether
+  ADR-0019 should carry an amendment note, since ADRs are immutable once
+  Accepted and the literal reading still says `node`.
 - **Brief defect found by a child, ruling issued mid-flight:** my brief's C.5
   tense fix re-inserted the literal token `**PO confirm**` that J.1 forbids. The
   A2 writer surfaced it instead of silently picking a side; its resolution is
