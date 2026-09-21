@@ -17,9 +17,9 @@ later document is defective.**
 
 | ID | Document | Scope | Status |
 |----|----------|-------|--------|
-| A0 | [`A0-conventions.md`](A0-conventions.md) | cross-cutting conventions: ids, canonical JSON, error kind → HTTP, pagination, time, unknown fields, size caps, field conventions | Draft |
-| A1 | [`A1-events.md`](A1-events.md) | event envelope, closed taxonomy, hash chaining, write path | Draft |
-| A2 | [`A2-graph.md`](A2-graph.md) | closed node/edge kinds, provenance, quarantine, validation, no-secret-values | Draft |
+| A0 | [`A0-conventions.md`](A0-conventions.md) | cross-cutting conventions: ids, canonical JSON, error kind → HTTP, pagination, time, unknown fields, size caps, field conventions | **Frozen** (2026-09-21, PR #2) |
+| A1 | [`A1-events.md`](A1-events.md) | event envelope, closed taxonomy, hash chaining, write path | **Frozen** (2026-09-21, PR #2) |
+| A2 | [`A2-graph.md`](A2-graph.md) | closed node/edge kinds, provenance, quarantine, validation, no-secret-values | **Frozen** (2026-09-21, PR #2) |
 | A3 | stage views _(not started)_ | fixed per-stage handover views + capped 1-hop drill-down (Q1) | — |
 | A4 | `/api/v1` surface _(not started)_ | endpoints, scopes, SSE mapping (Q12) | — |
 | A5 | token contract _(not started)_ | machine principals, job/node tokens, exclusion list (Q6, Q8, Q9) | — |
@@ -41,6 +41,14 @@ are the product owner decisions recorded in
   against it and the shared contract-test suite (below) locks it.
 - **Implemented** — the implementing package and its contract tests exist
   and pass.
+
+**A0, A1 and A2 reached `Frozen` on 2026-09-21** (PR #2): the product owner
+answered decisions **D1–D9** and accepted all three blocks of the 46-item
+confirm checklist. D1 is recorded in ADR-0021, D2 in ADR-0022; the remaining
+answers are recorded in `sessions/2026-09-21-freeze-and-first-code.md` and cited
+inline by each document's §6, which is now a decision record rather than a
+question list. A frozen clause changes only by a new ADR or an explicit product
+owner decision recorded in a session tracker, plus a PR.
 
 Versioning is **additive only** within `/api/v1` (Q13): new fields, new
 kinds, new endpoints are allowed; removing or repurposing them is not.

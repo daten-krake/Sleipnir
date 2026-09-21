@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | **Contract id** | A1 |
-| **Status** | `Draft` (`contracts/README.md` lifecycle: Draft → Frozen → Implemented) |
+| **Status** | `Frozen` — product owner, 2026-09-21, PR #2 (`contracts/README.md` lifecycle: Draft → Frozen → Implemented) |
 | **Owner** | architect |
 | **Gates** | A2 (graph provenance fields) · A3 (stage views read the log) · A4 (append/read/SSE endpoints) · A5 (scopes per principal) · A7 (fingerprint + spawn payload fields) · `internal/events` (store seam) · report builder · every component that composes an event |
 | **Implements** | ADR-0009 §1–§4 · ADR-0012 §1/§2/§6/§7 · ADR-0016 §1/§2/§4 · ADR-0017 §2–§3 · ADR-0018 §1–§4 · ADR-0019 §3/§5 · ADR-0020 §2–§5 · ADR-0005 · ADR-0011 · ADR-0013 · SPEC §5 steps 1–10, §6, §7, §8, C5/C8/C9/C11 · Q6 (+ worker addendum), Q10, Q11, Q12, Q13, Q14 · adversarial A1/A9/A11/A12 |
@@ -149,19 +149,20 @@ kind (A1-3.5).
 
   | `type` | `principal_id` | `component` |
   |---|---|---|
-  | `user` | user principal id — A0-1.2 registers `usr_` (`^usr_B{26}$`, 30 B; **AM-1, resolved by default — §6.2**). A username or e-mail MUST NOT be used: both are mutable and both are personal data in a customer export | `""` |
+  | `user` | user principal id — A0-1.2 registers `usr_` (`^usr_B{26}$`, 30 B; **AM-1, resolved and confirmed — §6.2**). A username or e-mail MUST NOT be used: both are mutable and both are personal data in a customer export | `""` |
   | `orchestrator` | the `job_` id of the orchestrator container | `""` |
   | `worker` | the `task_` id of the worker container | `""` |
   | `node` | the `slp_node_` id (Q9) | `""` |
   | `platform` | `""` | the platform subsystem that composed the event, from the closed list of A1-2.4 |
 
-  **AM-1 — resolved by default for the Freeze (PO confirm):** A0-1.2 registers the
-  human-principal prefix `usr_` (`^usr_B{26}$`, 30 B) and A0 §4 adds `KindUser`. A0
-  owns id *shapes*; delegating the spelling to A5 would split A0-1.5 validation
-  across two contracts. Every user-composed A1 kind (`actor.principal_id`, A1-2.2)
-  and every A2 operator write (`user_id`, A2-5.3) validates against it. The product
-  owner MUST confirm the prefix spelling before Frozen; it is additive-only
-  afterwards (A0-1.10). The identical sentence stands in A0 §6 and A2 §6.2.
+  **AM-1 — resolved and confirmed at the Freeze (product owner decision
+  2026-09-21, PR #2 item D3):** A0-1.2 registers the human-principal prefix
+  `usr_` (`^usr_B{26}$`, 30 B) and A0 §4 adds `KindUser`. A0 owns id *shapes*;
+  delegating the spelling to A5 would split A0-1.5 validation across two
+  contracts. Every user-composed A1 kind (`actor.principal_id`, A1-2.2) and
+  every A2 operator write (`user_id`, A2-5.3) validates against it. The prefix
+  spelling is confirmed and is additive-only from here (A0-1.10). The identical
+  sentence stands in A0 §6 and A2 §6.2.
 
 - **A1-2.3** Only the platform composes events. `actor` is stamped from the
   authenticated principal and the request context; a client MUST NOT supply
@@ -318,7 +319,7 @@ kind (A1-3.5).
 
 | Kind | `actor (type, component)` | Payload fields | Source |
 |---|---|---|---|
-| `notification_sent` | `(platform, "notify")` | `notification_kind:enum{approval_required,scan_started,scan_finished,agent_error,hard_stop_fired,cleanup_proposed}` `channel:enum{webhook,sse}` `target_name:string(128)` `delivery_status:enum{delivered,failed}` `attempt:int` `http_status:int` `duration_ms:int` `related_event_id:string` | ADR-0012 §2 (the six notification kinds, spelled as the ADR spells them), §6 (retries + delivery log are themselves audited events). `target_name` is the configured channel name: a webhook URL MUST NOT be stored (A0-3.7). These are **notification** kinds, distinct from A1 event kinds; only `hard_stop_fired` and `agent_error` exist in both vocabularies |
+| `notification_sent` | `(platform, "notify")` | `notification_kind:enum{approval_required,scan_started,scan_finished,agent_error,hard_stop_fired,cleanup_proposed,chain_head_anchor}` `channel:enum{webhook,sse}` `target_name:string(128)` `delivery_status:enum{delivered,failed}` `attempt:int` `http_status:int` `duration_ms:int` `related_event_id:string` | ADR-0012 §2 (its six notification kinds, spelled as the ADR spells them; A1 adds the seventh, `chain_head_anchor`), §6 (retries + delivery log are themselves audited events). `target_name` is the configured channel name: a webhook URL MUST NOT be stored (A0-3.7). These are **notification** kinds, distinct from A1 event kinds; only `hard_stop_fired` and `agent_error` exist in both vocabularies. chain_head_anchor is the A1-5.8 (4) out-of-band head anchor (product owner decision 2026-09-21, PR #2 item D5) — an A1 addition to the ADR-0012 §2 vocabulary, recorded here because §2's list predates the anchoring decision |
 
 The subsystem named in the Source column is the code path that writes the row;
 it appears in `actor.component` **only** when `actor.type="platform"` (A1-2.1).
@@ -485,7 +486,7 @@ absorbed" — including every offline-node replay (ADR-0013).
   | `scope_denied` / `blacklist_denied` | `attempted_target` is the target **as requested** (untrusted, never normalized into scope vocabulary); `blacklist_entry` on `blacklist_denied` MUST be the matched entry, and blacklist beats allowlist beats approval (ADR-0005 §3, C5) |
   | `action_blocked` | `reason` and `action_kind` MUST both be set; `detail` carries the human prose (A0-3.4) and is never parsed |
   | `agent_error` | `error_kind` is an A0-3.1 kind; `origin` is `component.Function` per ADR-0019 §2–§3; `message` is already redacted (A0-3.7, A1-4.9) |
-  | `notification_sent` | `notification_kind` is the ADR-0012 §2 vocabulary, not an A1 kind (A1-3.3); `target_name` is the configured channel name, never a webhook URL (A0-3.7); `attempt` ≥ 1 |
+  | `notification_sent` | `notification_kind` is the ADR-0012 §2 vocabulary, not an A1 kind (A1-3.3); `target_name` is the configured channel name, never a webhook URL (A0-3.7); `attempt` ≥ 1; for `chain_head_anchor`, `related_event_id` names the event whose append crossed the emission point (or the `chain_verified` event) |
 
   Every `error_kind` field (`task_result`, `agent_error`, `llm_call`) MUST be
   `""` or a byte-exact A0-3.1 kind; the per-kind non-empty obligations above are
@@ -600,7 +601,8 @@ absorbed" — including every offline-node replay (ADR-0013).
   the payload at all, it is an `evi_` reference (A1-4.3), so rejecting an
   over-cap summary costs a retry, never evidence. A0-7.3 measurement
   (decoded UTF-8 bytes of the value) and A0-7.8 (enforcement at platform
-  ingest, never in the producer) apply unchanged. **PO confirm** (§6.3).
+  ingest, never in the producer) apply unchanged. **Decided** (product owner,
+  2026-09-21, PR #2 §6.3).
   The **values** of every cap above live in the A0-7.1 registry (AM-2):
   A1 cites the registry names — `ProseLongMaxBytes`, `ProseMediumMaxBytes`,
   `TargetMaxBytes`, `LabelMaxBytes`, `ToolVersionMaxBytes`, `KindNameMaxBytes`,
@@ -836,7 +838,7 @@ absorbed" — including every offline-node replay (ADR-0013).
   FIPS 180-4). Because A0-2.12 exclusion lists accept plain top-level names
   only, `seq`/`prev_hash`/`hash` are top-level envelope keys (A1-1.3) and no
   payload field is excludable — every payload byte is evidence and is hashed.
-  **PO confirm** (§6.1).
+  **Decided** (product owner, 2026-09-21, PR #2 §6.1).
   The exclusion list is part of the digest's definition and MUST NOT change
   after Freeze except by a new ADR (A0-2.13, A1-5.10). _Excluding `seq` is what
   lets one logical event be re-verified without knowing its position;
@@ -985,21 +987,53 @@ absorbed" — including every offline-node replay (ADR-0013).
     `run_ended`/`hard_stop_fired`, so the trail — a different store, with
     different access — contradicts a truncated chain; (3) every delivered
     export carries the head hash (A1-6.6), so a truncated chain contradicts the
-    report already in the customer's hands. Startup verification (A1-6.2) MUST
+    report already in the customer's hands; (4) the platform MUST deliver the
+    head tuple of (2), extended with `chain_spec`, to a recipient **outside the
+    deployment** over the ADR-0012
+    §3 signed webhook, at exactly the emission points of (2) — every
+    verification (A1-6.2), every append that crosses a `HeadLogIntervalSeq`
+    boundary and every `run_ended`/`hard_stop_fired` — so an independent copy of
+    the chain head exists on a host the platform operator does not control
+    (product owner decision 2026-09-21, PR #2 item D5; this is head-**hash**
+    anchoring, not the external *timestamp* anchoring Q11 excluded). The webhook
+    payload MUST carry `engagement_id`, `head_seq`, `head_hash`,
+    `integrity_state` and `chain_spec`, signed per ADR-0012 §3, and MUST NOT
+    carry event payloads, evidence or secret material (ADR-0019 §5, ADR-0020
+    §5); the URL is never stored in an event (A0-3.7), only the channel's
+    `target_name`. Each delivery attempt composes `notification_sent` with
+    `notification_kind:"chain_head_anchor"` and `channel:"webhook"` (ADR-0012
+    §6: the delivery log is itself audited), so the set of anchors the platform
+    claims to have sent is reconstructable from the chain it anchors. Delivery
+    is best-effort and MUST NOT gate the safety path: a failed or unacknowledged
+    delivery MUST NOT block the append, the verification or the export, MUST be
+    recorded as `delivery_status:"failed"` with its `attempt`, and MUST be
+    retried per ADR-0012 §6 — no webhook outage may stall the event log.
+    Composing `notification_sent` for an anchor MUST NOT itself trigger another
+    anchor (the emission points of (2) are the only triggers). Recipient-side
+    comparison is out of platform scope; the platform's own startup comparison
+    remains the `chain_head_trail` row. Startup verification (A1-6.2) MUST
     compare the walked head against the highest `chain_head_trail` row for that
     engagement and MUST report `head_regression` as a break with A1-6.4's
     consequences when the stored head `(head_seq, head_hash)` is lower or
     different from the highest head this platform recorded out-of-band.
-    `Tests: TestHeadRegressionDetected, TestHeadTrailIsAppendOnly`.
-    Whether v1 additionally anchors the head hash over the
-    ADR-0012 §3 signed webhook (cheap, and the only anchor outside the
-    deployment) is a **PO decision** (§6.7), because Q11 excluded external
-    anchoring; the Freeze ships the in-platform anchor only and the residual
-    risk is printed into A1-6.6's export wording.
+    `Tests: TestHeadRegressionDetected, TestHeadTrailIsAppendOnly,`
+    `TestHeadAnchorWebhookCarriesTuple,`
+    `TestWebhookAnchorFailureNeverBlocksAppend,`
+    `TestAnchorDeliveryNeverTriggersAnotherAnchor`.
+    _The out-of-band webhook anchor of (4) was **approved** by the product owner
+    on 2026-09-21 (PR #2 item D5; §6 item 7 and §6 item 16). The truncation
+    residual in A1-6.6 is narrowed accordingly, not closed: forgery is now
+    detectable by a recipient that retains its anchors, and detection depends on
+    it retaining and comparing them._
   - **Does not survive unrestricted write access to the store plus the log:**
     an attacker who can rewrite both can forge a consistent history. That is
     host compromise, which is outside a hash chain's threat model
-    (adversarial A11's residual, A0-5.8's analogue).
+    (adversarial A11's residual, A0-5.8's analogue). Since mitigation (4) it is
+    nonetheless **detectable from outside**: the forgery contradicts the anchors
+    an independent recipient already holds, and suppressing those deliveries is
+    itself visible as a head that stops advancing. Prevention is out of scope;
+    detection is the recipient's, and A1-6.6 requires that a customer running no
+    such recipient be told the case is open for them.
 
 - **A1-5.9** Tamper matrix — the cases the shared contract tests MUST prove
   (`contracts/README.md` merge gate). Each row names the mutation, the expected
@@ -1146,8 +1180,9 @@ absorbed" — including every offline-node replay (ADR-0013).
     trail is damaged destroys the very data an investigator needs, and a
     tamperer's cheapest attack would then be "break one row, blind the
     platform". New events link from the current head (A1-5.5); the break stays
-    reported at its own `seq` on every later walk. **PO confirm** (§6.5: the
-    alternative is fail-closed refusal of appends).
+    reported at its own `seq` on every later walk. **Decided** (product owner,
+    2026-09-21, PR #2 §6.5); the alternative was fail-closed refusal of
+    appends.
   - **Blast radius is one engagement.** A failed chain MUST NOT block exports,
     reads or appends of any other engagement, and MUST NOT stop the platform
     process.
@@ -1220,7 +1255,8 @@ absorbed" — including every offline-node replay (ADR-0013).
   artifact (report HTML/PDF, findings JSON export, evidence bundle) MUST embed
   this exact field set, produced by the platform at release time; the artifact
   format and its wire/document shape belong to the report session and A4, the
-  **fields and their meaning** belong to A1 (**PO confirm**, §6.13):
+  **fields and their meaning** belong to A1 (**Decided** — product owner,
+  2026-09-21, PR #2 §6.13):
 
   | Field | Type | Meaning |
   |---|---|---|
@@ -1266,13 +1302,18 @@ absorbed" — including every offline-node replay (ADR-0013).
   `Tests: TestExportComposesArtifactReleased,`
   `TestExportIntegrityStateIsNotTheChainStateEnum`.
 
-  _Residual risk printed here because the PO declined the out-of-band webhook
-  anchor (§6 item 16): the Freeze ships the in-platform anchor only
-  (`chain_head_trail`, A1-5.8). An attacker holding both store-write and
-  log-write access on the same host — the default Docker deployment, SPEC §10 —
-  can forge history and this metadata block with it. A customer who needs that
-  case closed MUST be given the ADR-0012 §3 signed-webhook anchor by a later
-  ADR._
+  _Out-of-band anchor (product owner decision 2026-09-21, PR #2 item D5): the
+  head tuple is additionally delivered over the ADR-0012 §3 signed webhook
+  (A1-5.8 (4)), so a recipient outside the deployment holds an independent copy
+  of the chain head. **Residual risk, narrowed but not eliminated:** an attacker
+  holding both store-write and log-write access on the same host — the default
+  Docker deployment, SPEC §10 — can still forge history and this metadata block
+  with it, and can suppress webhook delivery. What the anchor buys is that
+  suppression is visible to the recipient as a head that stops advancing, and
+  that a forged history contradicts the anchors the recipient already holds.
+  Detection therefore depends on the recipient retaining and comparing those
+  anchors against this block's `head_seq`/`head_hash`. A customer who runs no
+  such recipient MUST be told that the truncation case is open for them._
 
 - **A1-6.7** Third-party re-verification seam. The platform MUST be able to
   produce a **verification bundle** for one engagement: every event's stored
@@ -1370,7 +1411,7 @@ absorbed" — including every offline-node replay (ADR-0013).
   | Principal kind | `events:append` | Kinds it may cause to be written |
   |---|---|---|
   | `user` (admin/operator/viewer, SPEC §3) | MUST NOT hold it | only via the endpoint that performs the action (A1-2.7): `scope_changed`, `engagement_policy_changed`, `run_started`, `hard_stop_fired`, `approval_granted`/`_denied`, `graph_node_quarantined`, `report_inclusion_changed`, `graph_edge_retracted`, `integrity_override` (admin only, A1-6.5), `cleanup_planned` approval; plus the refusal records of the note below when one of their requests is denied |
-  | `orchestrator` (`job_`) | SHOULD NOT hold it in v1 (**PO confirm**, §6.8) | `spawn_requested` (through the spawn broker, ADR-0017 §2), `approval_requested` (through the approval service), `agent_error`, `scope_denied`, `blacklist_denied`, `action_blocked` — all platform-composed with the orchestrator as `actor` |
+  | `orchestrator` (`job_`) | SHOULD NOT hold it in v1 (**Decided** — product owner, 2026-09-21, PR #2 §6.8) | `spawn_requested` (through the spawn broker, ADR-0017 §2), `approval_requested` (through the approval service), `agent_error`, `scope_denied`, `blacklist_denied`, `action_blocked` — all platform-composed with the orchestrator as `actor` |
   | `worker` (`task_`) | MUST hold it (Q6 addendum) | the three **C** kinds only: `command_executed`, `task_result`, `revert_recorded` (A1-3.4) |
   | `node` (`slp_node_`, Q9) | MUST hold it (ADR-0013 offline buffering) | the same three **C** kinds |
   | `platform` | not applicable | every kind, including the integrity kinds (A1-3.3), which no machine principal can reach by construction (A1-2.7) |
@@ -1437,7 +1478,7 @@ absorbed" — including every offline-node replay (ADR-0013).
 
 - **A1-7.6** `events:append` deduplication key (the A0-3.11 obligation).
   - **Key:** `(engagement_id, actor.principal_id, kind, idempotency_key)`
-    (**PO confirm**, §6.12).
+    (**Decided** — product owner, 2026-09-21, PR #2 §6.12).
     `idempotency_key` is a client-generated opaque string (≤ 64 chars,
     `^[A-Za-z0-9_-]{1,64}$`) that the client MUST reuse **verbatim** on every
     retry of the same logical append and MUST NOT reuse for a different one.
@@ -1653,7 +1694,7 @@ absorbed" — including every offline-node replay (ADR-0013).
     unrelated point. Resolving the id turns a confusing cross-engagement replay
     into a loud error, and makes the A2-11.4-style negative test decidable.
     A0 amendment request AM-4 asks A0-4.8 to bless this case.
-    **PO confirm** (§6.11)._
+    **Decided** (product owner, 2026-09-21, PR #2 §6.11)._
   - Mid-paging semantics are the easy case (A0-4.7): the chain is append-only,
     so a cursor is a **stable watermark** — no row is skipped or duplicated, and
     rows appended after the cursor appear on later pages. A client MUST still
@@ -1695,10 +1736,10 @@ absorbed" — including every offline-node replay (ADR-0013).
     findings, credentials references and target data — a lateral-information
     channel the report-only rule exists to close._
   - **`orchestrator` (`job_`)**: SHOULD hold no event-log read scope in v1
-    (**PO confirm**, §6.8). Its planning surface is the graph and the stage
-    views (ADR-0016 §4, Q1, A3), not the log; if A5 grants a read at all it
-    MUST be limited to its own `run_id` and MUST NOT include another run's
-    events.
+    (**Decided** — product owner, 2026-09-21, PR #2 §6.8). Its planning surface
+    is the graph and the stage views (ADR-0016 §4, Q1, A3), not the log; if A5
+    grants a read at all it MUST be limited to its own `run_id` and MUST NOT
+    include another run's events.
   - **`user`**: admin — every engagement; operator — engagements assigned to
     them (SPEC §3, ADR-0012 §1); viewer — read-only on assigned engagements.
     Assignment is A5's; A1 requires that the read be engagement-scoped and that
@@ -1712,13 +1753,13 @@ absorbed" — including every offline-node replay (ADR-0013).
   **means** and what a consumer may rely on:
   - One stream per engagement (A1-8.6); an optional `run_id` filter narrows it
     (A1-8.3). There is no cross-engagement stream and no global stream.
-  - The SSE `id:` field MUST be the event's decimal **`seq`** (**PO
-    confirm**, §6.10), so
-    `Last-Event-ID` is a chain position and a reconnect resumes at
-    `seq + 1` — gap-free and in order. The `data:` payload MUST be the full
-    17-key canonical envelope (A1-1.8): the stream carries events, not
-    summaries, and a stream consumer needs no second read to verify or display
-    one. Event-type naming (`event:`) and any control/resync message are A4's.
+  - The SSE `id:` field MUST be the event's decimal **`seq`** (**Decided** —
+    product owner, 2026-09-21, PR #2 §6.10), so `Last-Event-ID` is a chain
+    position and a reconnect resumes at `seq + 1` — gap-free and in order. The
+    `data:` payload MUST be the full 17-key canonical envelope (A1-1.8): the
+    stream carries events, not summaries, and a stream consumer needs no second
+    read to verify or display one. Event-type naming (`event:`) and any
+    control/resync message are A4's.
   - **Emit after commit, in `seq` order.** A stream MUST NOT carry an event
     whose transaction has not committed, and MUST NOT emit `seq` 412 before
     411: an out-of-order or rolled-back emit looks exactly like a chain gap to
@@ -2693,7 +2734,7 @@ owns the rule also names them, this subsection is the index.
 | A1-5.3 | `TestSecondGenesisIsRejected`, `TestAppendRefusedWithoutValidGenesis` |
 | A1-5.4 | `TestRecordedAtClampIsMonotone`, `TestRecordedAtClampBeyondBoundIsLogged`, `TestFailedAppendConsumesNoSeq`, `TestNoGlobalSequenceSharedAcrossEngagements`, `TestConcurrentAppendsProduceContiguousSeq`, `TestConcurrentAppendsAcrossEngagements` |
 | A1-5.7 | `TestServedBytesReproducible`, `TestServedRoundTripIsIdentity`, `TestEventRoundTrip` |
-| A1-5.8 | `TestHeadRegressionDetected`, `TestHeadTrailIsAppendOnly` |
+| A1-5.8 | `TestHeadRegressionDetected`, `TestHeadTrailIsAppendOnly`, `TestHeadAnchorWebhookCarriesTuple`, `TestWebhookAnchorFailureNeverBlocksAppend`, `TestAnchorDeliveryNeverTriggersAnotherAnchor` |
 | A1-5.9 | `TestChainVectorDigests` (the §4.3 vector, byte-exact, rows 0–3) |
 | A1-6.2 | `TestReadDuringStartupWalkIsFlaggedUnverified`, `TestExportFromUnverifiedChainRefused`, `TestAppendRefusedBeforeStartupVerificationCompletes` |
 | A1-6.3 | `TestOneBreakEventPerRun`, `TestBreakDedupStateWrittenInSameTransaction` |
@@ -2743,7 +2784,7 @@ safety-test rule for the write path; A1 does not reach `Frozen` without them
 | **ADR-0020 §3–§4** | per-run pseudonymization mapping is secret; captured credentials/hashes/tokens never reach a cloud endpoint under any policy | A1-4.9 (mapping values are secret material; exclusion at the gateway is defence in depth), A1-3.3 (`llm_call.masked_entity_count`, `excluded_secret_count`), A1-3.3 (`action_blocked{secret_excluded, llm_egress_blocked}`), A2-9 cross-referenced |
 | **ADR-0020 §5** | operator-visible egress log; residual masking risk declared | A1-3.3 (`llm_call` is the egress log, one event per call), A1-8.3 (filterable by `kind`), A1-4.6 (`redacted` exists from day one) |
 | **ADR-0005 / C5** | allowlist scope, blacklist beats allowlist beats approval, enforcement in the platform core, a denied action is auditable, hard stop is platform-owned and respawn-proof | A1-3.3 (`scope_changed`, `scope_denied`, `blacklist_denied`, `hard_stop_fired`, `container_killed{hard_stop}`, `action_blocked{hard_stop_active}`), A1-4.2 (`entry_hash`; blacklist entry matched), A1-7.12 (kill paths never block on the store), A1-7.1 (enforcement is platform-side) |
-| **ADR-0012 §1–§2/§6–§7** | only assigned operators/admins approve; approver identity + timestamp in the log; six notification kinds; retries and delivery are audited; 2 h expiry → orchestrator replans | A1-3.3 (`approval_granted`/`_denied` with the envelope `actor` as approver identity, `approval_expired.expires_at`/`queue_wait_ms`, `notification_sent`), A1-2.1–2.2 (typed actor), A1-1.4 (platform time is authoritative for expiry), A1-4.2 (notification vocabulary is ADR-0012's, not A1's), A1-3.3 (`agent_error` as a notification kind) |
+| **ADR-0012 §1–§2/§6–§7** | only assigned operators/admins approve; approver identity + timestamp in the log; six notification kinds; retries and delivery are audited; 2 h expiry → orchestrator replans | A1-3.3 (`approval_granted`/`_denied` with the envelope `actor` as approver identity, `approval_expired.expires_at`/`queue_wait_ms`, `notification_sent`), A1-2.1–2.2 (typed actor), A1-1.4 (platform time is authoritative for expiry), A1-4.2 (notification vocabulary is ADR-0012's, not A1's), A1-3.3 (`agent_error` as a notification kind; `chain_head_anchor` as A1's seventh value for the A1-5.8 (4) anchor, product owner decision 2026-09-21, PR #2 item D5) |
 | **ADR-0013 / Q9** | remote agent nodes over a mesh/tunnel, buffering when offline; node identity `slp_node_` | A1-1.1 (`node_id`), A1-1.4/A0-5.7 (`occurred_claimed_at` for buffered events), A1-7.6 (dedup key makes replay safe), A1-7.11 (buffer and replay, never drop), A1-7.4 (`node` principals append the three C kinds) |
 | **ADR-0011** | one core, two faces (HTMX + JSON/SSE); rate limiting is part of the attack surface | A1-8.5 (SSE mapping), A1-8.7 (no projection), A1-6.8 (`on_demand` verification must be rate-limited, A0-3.1 `rate_limited`), A1-7.5 (one error envelope, A0-3.10 for the UI face) |
 | **adversarial A11** | evidence tampering / chain of custody: a compromised component could rewrite history | A1-5.2–5.7 (chainable set incl. `engagement_id`, `actor` and all three timestamps; stored preimage), A1-5.8 (what the chain proves; out-of-band head trail), A1-5.9 (tamper matrix T1–T17), A1-6 (detect, block, override, stamp), A1-6.7 (third-party re-verification bundle), A1-7.2 (no update/delete on the seam), A1-7.9 (DB-level `REVOKE` recommendation), A1-4.6 (`redacted` from day one) |
@@ -2767,7 +2808,7 @@ safety-test rule for the write path; A1 does not reach `Frozen` without them
 | **A0-5.7** | a client-supplied timestamp lives in a `*_claimed_at` field, never drives ordering/expiry/digests, and is stored next to `recorded_at` | A1-1.1 (`occurred_claimed_at`), A1-1.4, A1-4.12 (no payload timestamp is ever a claimed one), A1-5.2 (it **is** hashed, so it cannot be edited afterwards), A1-7.3 (the only client time in an append), A1-5.9 T3 |
 | **Adversarial T-01/T-02** | engagement lifecycle and artifact release are chainable facts, not side effects | A1-3.3 (`engagement_created` at `seq` 1, `engagement_closed`, `artifact_released`), A1-3.5 (additive), A1-3.7 (SPEC §5 steps 1 and 9), A1-4.2 (the three obligations rows), A1-6.6 (the export path composes `artifact_released`), §4.1 (three new `Kind` consts, 42 total), A1-4.5 (`TestMaximalPayloadFitsCanonicalBound` over 42 kinds), A1-4.4 (`TestKindListIs42AndClosed`) |
 | **Adversarial C-01/S-07 (§6 item 15, ADR-0021)** | override authority is one unambiguous rule (admin-only), and the override's lifetime is a product-owner decision: not single-use, the residual risk accepted by the service owner and compensated by chained attribution | A1-6.5 (authority + lifetime), A1-3.3 (`artifact_released.override_event_id`), A1-4.2 (`override_event_id` non-empty iff `failed_overridden`), A1-6.6 (one `artifact_released` per artifact), §6 item 15, ADR-0021 |
-| **Principal S-02/P-37 (§6 item 16)** | the head hash is anchored out-of-band in a store the event role cannot rewrite | A1-5.8 (`chain_head_trail`, `REVOKE UPDATE, DELETE`, 100-`seq` interval), A1-3.3 (`break_kind:head_regression`), A1-6.3 (the `head_regression` row), A1-6.2 (startup compares against the trail), A1-6.6 (residual-risk wording), §4.1 (`HeadLogIntervalSeq = 100`), §6 item 16 |
+| **Principal S-02/P-37 (§6 item 16)** | the head hash is anchored out-of-band in a store the event role cannot rewrite | A1-5.8 (`chain_head_trail`, `REVOKE UPDATE, DELETE`, 100-`seq` interval), A1-5.8 (4) (the ADR-0012 §3 signed-webhook head anchor, approved 2026-09-21), A1-3.3 (`break_kind:head_regression`), A1-3.3 (`notification_kind:chain_head_anchor`), A1-6.3 (the `head_regression` row), A1-6.2 (startup compares against the trail), A1-6.6 (residual-risk wording), §4.1 (`HeadLogIntervalSeq = 100`), §6 item 16 |
 | **Principal P-13/P-32, adversarial T-07** | the `recorded_at` forward clamp is byte-wise, bounded, and its state lives on the chain head | A1-5.4 (byte-wise comparison, 1000 ms bound), A1-5.6 (`LastRecordedAt`, `LastBreakSeq`, `LastBreakKind`, `LastBreakEventID`), A1-6.3 (break-dedup state), §4.1 (`ChainHead`) |
 | **Principal P-09** | a refused append during the startup walk is retryable, not a defect | A1-7.5 (`timeout` row + the `internal` reservation), A1-7.11 (retry reuses `idempotency_key`; the one retryable write), A1-6.2 (`unverified`) |
 | **Principal P-97/E-03/S-13** | the kill path is durable without being blocking | A1-7.12 (durable outbox, `REVOKE UPDATE, DELETE`, startup drain, UI warning), A1-6.4 (the integrity-warning carrier), A1-6.5 (override tests), A1-4.2 (`container_killed.stop_event_id`) |
@@ -2785,12 +2826,15 @@ safety-test rule for the write path; A1 does not reach `Frozen` without them
 
 ## 6. Open for product owner
 
-Recommendations that are genuinely product-owner calls: naming, algorithms,
+**All items answered** — product owner, 2026-09-21, PR #2 (D1–D9 plus the 46-item confirm checklist). This section is now the decision record; the markers below cite the decision instead of requesting it.
+
+Recommendations that were genuinely product-owner calls: naming, algorithms,
 customer-visible wording, and the two places where a safety default could
-reasonably go the other way. Each is marked **PO confirm** at the clause too;
-none is decided silently. A1 is written against **current** A0 throughout —
-nothing below is assumed to be already granted, and A1's own numbering of
-amendment requests (AM-1…AM-4) is independent of A2's.
+reasonably go the other way. Each was marked at the clause as needing the
+product owner's confirmation; none was decided silently, and each now cites the
+decision. A1 is written against **current** A0 throughout — nothing below is
+assumed to be already granted, and A1's own numbering of amendment requests
+(AM-1…AM-4) is independent of A2's.
 
 1. **A1-5.2 / A1-5.5 — digest and linking.** SHA-256 over the A0-2 canonical
    bytes with an exclusion list of exactly `hash`, `prev_hash`, `seq`;
@@ -2800,20 +2844,21 @@ amendment requests (AM-1…AM-4) is independent of A2's.
    locks it. A keyed hash (HMAC with a platform secret) would additionally
    resist a tamperer who knows the algorithm — but the secret would live on the
    same host as the store, so it buys nothing against the threat that matters
-   (A1-5.8) and costs key management. **PO confirm**._
-2. **A1-2.2 — user principal id has no shape.** A0-1.2 registers no prefix for a
-   human principal, so `actor.principal_id` for `type:"user"` cannot be
-   validated per A0-1.5. Recommend A0 register `usr_` + the A0-1.1 body (same
-   request as A2 §6.2 / A2 AM-1) — **A0 amendment request AM-1**, and on A1's
-   critical path: without it, no user-composed kind can be stamped correctly
-   (`approval_granted`, `approval_denied`, `hard_stop_fired`, `scope_changed`,
+   (A1-5.8) and costs key management. **Decided** (product owner, 2026-09-21,
+   PR #2 §6.1)._
+2. **A1-2.2 — user principal id shape: RESOLVED (AM-1 granted, product owner
+   decision 2026-09-21, PR #2 item D3).** A0-1.2 registers the human-principal
+   prefix `usr_` (`^usr_B{26}$`, 30 B) and A0 §4 adds `KindUser`, so
+   `actor.principal_id` for `type:"user"` validates per A0-1.5 and every
+   user-composed kind can be stamped correctly (`approval_granted`,
+   `approval_denied`, `hard_stop_fired`, `scope_changed`,
    `engagement_policy_changed`, `report_inclusion_changed`,
-   `graph_node_quarantined`, `graph_edge_retracted`, `integrity_override`) and
-   A1-6.5's "name who overrode it" is unenforceable. A username or e-mail MUST
-   NOT be used instead: both are mutable and both are personal data in a
-   customer export. Until AM-1 lands, user-composed events MUST be refused
-   (A0-1.5), which blocks approvals — so this is a **freeze blocker**, not a
-   nicety.
+   `graph_node_quarantined`, `graph_edge_retracted`, `integrity_override`) —
+   which is what makes A1-6.5's "name who overrode it" enforceable. This was the
+   single **freeze blocker** (same request as A2 §6.2 / A2 AM-1) and it is
+   closed. The rule the request carried stays normative: a username or e-mail
+   MUST NOT be used instead — both are mutable and both are personal data in a
+   customer export.
 3. **A1-4.5 — mechanism R for every capped A1 field, T for none.** Consequence:
    an over-cap append is refused with `summary_too_large` (413) and the client
    retries with fewer bytes; nothing is ever silently shortened inside a hashed
@@ -2822,8 +2867,9 @@ amendment requests (AM-1…AM-4) is independent of A2's.
    declare (A1-4.1), and the bulk content an agent actually produces is an
    `evi_` reference, not a payload string (A1-4.3). The operational cost is a
    413 loop for an agent that will not shorten its summary — visible as
-   `action_blocked{append_rejected}` rather than silent. **PO confirm** (AM-2
-   asks A0-7.7 to name A1 alongside A2/A3)._
+   `action_blocked{append_rejected}` rather than silent. **Decided** (product
+   owner, 2026-09-21, PR #2 §6.3; AM-2 asks A0-7.7 to name A1 alongside
+   A2/A3)._
 4. **A1-4.9 — secret found in an append payload: reject, not redact.**
    Recommend hard reject (`validation`, field + rule id named, value never
    echoed) with the rejection chained as `action_blocked{append_rejected}`.
@@ -2831,26 +2877,28 @@ amendment requests (AM-1…AM-4) is independent of A2's.
    _Reject is the Q3 posture and matches A2-9.4; redact risks a false positive
    destroying a worker's only report of what it ran, and an agent that cannot
    re-append is blind. Both need the same pattern corpus, which must ship with
-   the contract tests. **PO confirm** (aligned with A2 §6.10 — the two
-   contracts should not answer this differently)._
+   the contract tests. **Decided** (product owner, 2026-09-21, PR #2 item D8;
+   aligned with A2 §6.10 — the two contracts MUST NOT answer this
+   differently)._
 
-   **Ruled once for both contracts (PO confirm): reject, never redact.** A
-   secret-pattern hit (A2-9.4 rule ids) is a hard reject — `validation` (400)
-   naming the field and the rule id, the value never echoed in whole, in part or
-   as a digest (A0-3.4) — and the rejection is chained (`action_blocked`).
-   Redaction was rejected: a false positive would silently destroy a worker's
-   only report of what it ran, and `redacted:true` (A1-4.6) means platform
-   redaction, never rejection. The false-positive risk is controlled by shipping
-   the A2-9.4 rule table with the planted-secret corpus. A1 §6.4 and A2 §6.10
-   are the same question and MUST NOT be answered differently.
+   **Ruled once for both contracts (product owner decision 2026-09-21, PR #2
+   item D8): reject, never redact.** A secret-pattern hit (A2-9.4 rule ids) is a
+   hard reject — `validation` (400) naming the field and the rule id, the value
+   never echoed in whole, in part or as a digest (A0-3.4) — and the rejection is
+   chained (`action_blocked`). Redaction was rejected: a false positive would
+   silently destroy a worker's only report of what it ran, and `redacted:true`
+   (A1-4.6) means platform redaction, never rejection. The false-positive risk
+   is controlled by shipping the A2-9.4 rule table with the planted-secret
+   corpus. A1 §6.4 and A2 §6.10 are the same question and MUST NOT be answered
+   differently.
 5. **A1-6.4 — appends continue on a failed chain.** Recommend: exports blocked,
    internal views flagged, **appends keep working**, blast radius one
    engagement. Alternative: fail closed and refuse appends until the break is
    resolved. _Refusing appends stops evidence capture and hands a tamperer a
    one-row denial-of-service over the whole engagement; continuing means new
    events chain onto a head that is already suspect, which the break event and
-   the export stamp both disclose. Q11 mandates only the export block. **PO
-   confirm**._
+   the export stamp both disclose. Q11 mandates only the export block.
+   **Decided** (product owner, 2026-09-21, PR #2 §6.5)._
 6. **A1-6.5 — override is admin-only, reasoned, and dies with the state it
    overrides.** Recommend: `user` principal with the admin role (SPEC §3, as
    A1-3.3 already spells it); non-empty `reason`; `scope:export` vs
@@ -2861,10 +2909,10 @@ amendment requests (AM-1…AM-4) is independent of A2's.
    (insider abuse)), or make an override time-boxed (needs a clock-driven expiry inside a
    safety decision). _Q11 says "explicit operator override … logged as event";
    "operator" there reads as "human", and SPEC §3 puts integrity-class controls
-   with the admin, next to the hard stop. **PO confirm** — the wording the
-   product owner signs is item 15._
-7. **A1-5.8 — tail truncation needs an anchor outside the store. This one needs
-   a decision, not a confirmation.** Deleting the last *k* rows and updating the
+   with the admin, next to the hard stop. **Decided** (product owner,
+   2026-09-21, PR #2 §6.6) — the wording the product owner signed is item 15._
+7. **A1-5.8 — tail truncation needs an anchor outside the store: DECIDED, the
+   webhook anchor ships.** Deleting the last *k* rows and updating the
    chain-head state leaves a self-consistent chain; no hash chain detects that
    from inside. v1 already mandates the internal mitigations (no update/delete
    on the seam, head hash emitted to `slog` at every verification and every
@@ -2874,11 +2922,9 @@ amendment requests (AM-1…AM-4) is independent of A2's.
    signed webhook at those same points — a customer-side or SIEM-side copy that
    a store-only attacker cannot reach, for roughly twenty lines of code and no
    new dependency. _Q11 excluded external **timestamp** anchoring; this is
-   head-hash anchoring, and it is the only v1 mechanism that closes the
-   truncation case. If the PO prefers to stay strictly inside Q11, the residual
-   risk must be written into the report's own integrity wording. **PO
-   decision** — the Freeze default and the residual risk the product owner
-   decides on are item 16._
+   head-**hash** anchoring, and it is the only v1 mechanism that closes the
+   truncation case. **Approved by the product owner 2026-09-21 (PR #2 item D5)**
+   and made normative in A1-5.8 (4); item 16 records the same decision._
 8. **A1-7.4 / A1-8.4 — the orchestrator gets neither `events:append` nor a log
    read scope in v1.** Every orchestrator-originated occurrence already has a
    platform-composed kind (`spawn_requested` through the broker,
@@ -2888,8 +2934,8 @@ amendment requests (AM-1…AM-4) is independent of A2's.
    _Granting a read "just for the orchestrator's own run" is a lateral channel
    into every other agent's findings and target data; granting an append lets a
    planner write prose into the audit spine that no C kind covers. A1-2.6's run
-   binding still applies if A5 ever grants either. **PO confirm** (A5 turns this
-   into the exclusion list)._
+   binding still applies if A5 ever grants either. **Decided** (product owner,
+   2026-09-21, PR #2 §6.8; A5 turns this into the exclusion list)._
 9. **A1-3 gap — user and session audit events are not in the taxonomy.** The 42
    kinds cover the engagement/run/agent/integrity spine. They do **not** cover
    authentication and administration: login success/failure, TOTP failure,
@@ -2903,8 +2949,8 @@ amendment requests (AM-1…AM-4) is independent of A2's.
    only if a customer export must include them. _SPEC §3 and adversarial A15
    (insider abuse) both assume "audit log + role separation cover v1" — that
    assumption is currently unowned, and A1 is the wrong home for it because the
-   chain scope is the engagement. **PO decision on ownership**, flagged here so
-   it is not lost (A1 §2 lists it as a gap)._
+   chain scope is the engagement. **Decided** (product owner, 2026-09-21, PR #2
+   item D9), flagged here so it is not lost (A1 §2 lists it as a gap)._
 
    Ownership split applied for the Freeze: authentication, session, credential
    and role audit are **not** A1 kinds — they have no natural `engagement_id`
@@ -2920,8 +2966,8 @@ amendment requests (AM-1…AM-4) is independent of A2's.
     which is opaque and forces a lookup to resume. _`seq` is already public in
     every served envelope (A1-1.1), so exposing it in the frame discloses
     nothing new, and A0-1.6's "do not parse ids" rule is respected because
-    `seq` is a declared ordering key, not an id. Framing itself is A4's. **PO
-    confirm**._
+    `seq` is a declared ordering key, not an id. Framing itself is A4's.
+    **Decided** (product owner, 2026-09-21, PR #2 §6.10)._
 11. **A1-8.2 — a cursor must resolve inside the requested engagement.** Because
     `seq` is per engagement, engagement A's cursor is a *valid position* in
     engagement B; replaying it would silently serve B's rows from an unrelated
@@ -2929,9 +2975,9 @@ amendment requests (AM-1…AM-4) is independent of A2's.
     chain and answer `validation` (restart from page one) when it is not there.
     _A0-4.4 promises a forged cursor yields "at worst an empty page or
     `validation`"; this makes the cross-engagement case loud instead of
-    confusing, at the cost of one indexed lookup per page. **PO confirm** (AM-4
-    asks A0-4.8 to bless the case); A2 may want the same rule for graph
-    cursors._
+    confusing, at the cost of one indexed lookup per page. **Decided** (product
+    owner, 2026-09-21, PR #2 §6.11; AM-4 asks A0-4.8 to bless the case); A2 may
+    want the same rule for graph cursors._
 12. **A1-7.6 — the dedup key is a client-supplied `idempotency_key`.** Required
     from machine principals, ≤ 64 chars, reused verbatim on retry, never reused
     across different content (that is `conflict`). Alternative considered and
@@ -2940,29 +2986,37 @@ amendment requests (AM-1…AM-4) is independent of A2's.
     command, same target, same exit code, run twice) into one event, which is
     silent evidence loss. _The client key is the only construction that makes a
     retry safe without inventing occurrences; ADR-0013's offline buffering
-    makes retries normal, not exceptional. **PO confirm**._
+    makes retries normal, not exceptional. **Decided** (product owner,
+    2026-09-21, PR #2 §6.12)._
 13. **A1-6.6 — export integrity metadata and the stamp wording.** The eight
     fields of A1-6.6 are the contract; the customer-visible sentence is the
     literal **"integrity verification failed"** (Q11) rendered with the override
     `reason` and the overriding user's id. _Q11 fixed the words, so this is a
     confirmation of the field set and of where the stamp appears (title block
     plus every page footer is the recommendation, so it survives excerpting).
-    Report layout itself belongs to the report session. **PO confirm**._
-14. **A1-3.3 / A1-3.8 — the additive taxonomy changes this revision made.**
-    Two kinds (`quarantine_recomputed` for A2-8.5, `graph_edge_retracted` for
+    Report layout itself belongs to the report session. **Decided** (product
+    owner, 2026-09-21, PR #2 §6.13)._
+14. **A1-3.3 / A1-3.8 — the additive taxonomy changes this revision made.** Two
+    kinds (`quarantine_recomputed` for A2-8.5, `graph_edge_retracted` for
     A2-3.9), three more added at the Freeze (adversarial T-01/T-02:
-    `engagement_created`, `engagement_closed`, `artifact_released` — see
-    A1-3.5) and two enum values (`chain_break_detected.break_kind:
+    `engagement_created`, `engagement_closed`, `artifact_released` — see A1-3.5)
+    and three enum values (`chain_break_detected.break_kind:
     engagement_mismatch` for the A12 splicing case, `action_blocked.reason:
-    append_rejected` so a refused append stays observable), taking the closed
-    list from 37 to **42** kinds. One request from A2 was **corrected** rather
-    than granted: no `node_superseded` kind, because `graph_node_written` +
+    append_rejected` so a refused append stays observable, and
+    `notification_sent.notification_kind:chain_head_anchor` for the A1-5.8 (4)
+    out-of-band head anchor — product owner decision 2026-09-21, PR #2 item D5),
+    taking the closed list from 37 to **42** kinds. `chain_head_anchor` is a
+    **notification** kind, not an A1 `Kind`, so the 42 constants are unchanged
+    (A1-3.3, A1-4.2). One request from A2 was **corrected** rather than granted:
+    no `node_superseded` kind, because `graph_node_written` +
     `graph_edge_written{supersedes}` already record it and a third encoding
-    would be a third source of truth. _All additions are additive under
-    A0-6.5 and cost nothing before Freeze; after Freeze a new kind is still
-    additive, so none of this is a one-way door. **PO confirm**._
+    would be a third source of truth. _All additions are additive under A0-6.5
+    and cost nothing before Freeze; after Freeze a new kind is still additive,
+    so none of this is a one-way door. **Decided** (product owner, 2026-09-21,
+    PR #2 §6.14)._
 
-    **PO confirm — operator release of quarantine is removed.**
+    **Decided (product owner, 2026-09-21, PR #2 item D6) — operator release of
+    quarantine is removed.**
     `operator_release` is deleted from A1's `quarantine_kind` enum and A2
     provides no release operation: an `out_of_scope` node is released **only**
     by an operator scope change and the recomputation it causes (A2-8.5,
@@ -2986,24 +3040,32 @@ amendment requests (AM-1…AM-4) is independent of A2's.
     the deployment, who compensates with logging; the platform's obligation is
     that the attribution is complete (one chained `artifact_released` per
     artifact, naming the override, the head, the artifact and the recipient,
-    A1-6.6) and stamped into the export. ADR-0021 is **Proposed** in PR #2 and
-    awaits the product owner's review.
-16. **A1-5.8 / §6.7 — out-of-band head anchoring (PO decision).** The Freeze
-    ships the in-platform anchor only: an append-only `chain_head_trail` table
-    (`REVOKE UPDATE, DELETE`) plus `break_kind:"head_regression"`. Residual
-    risk accepted unless the PO also approves pushing
-    `(engagement_id, head_seq, head_hash)` over the ADR-0012 §3 signed webhook:
-    an attacker with both store-write and log-write access on the same host can
-    forge history (default Docker deployment, SPEC §10). This residual MUST be
-    printed into A1-6.6's export wording if the webhook anchor is declined — it
-    is, see A1-6.6.
-17. **A1 §6.9 — user/session audit ownership (PO decision).** A1 chains
-    engagement-scoped facts only; authentication, session and role audit belong
-    to A5 in a platform-scoped store. **Known debt accepted at Freeze:**
-    engagement operator assignment (who may approve, ADR-0012 §1) is unaudited
-    in v1 until A5 adds `engagement_assignment_changed` additively (A1-3.5);
-    an insider admin self-assigning and then approving is detectable only in
-    A5's store (adversarial C-08).
+    A1-6.6) and stamped into the export. ADR-0021 is **Accepted** (product owner,
+    2026-09-21, PR #2 item D1).
+16. **A1-5.8 / §6.7 — out-of-band head anchoring: DECIDED, approved (product
+    owner, 2026-09-21, PR #2 item D5).** The Freeze ships the in-platform
+    anchor — an append-only `chain_head_trail` table (`REVOKE UPDATE, DELETE`)
+    plus `break_kind:"head_regression"` — **and** the out-of-band anchor: the
+    platform also pushes `(engagement_id, head_seq, head_hash)` over the
+    ADR-0012 §3 signed webhook, which is now normative as A1-5.8 (4) (product
+    owner decision 2026-09-21, PR #2 item D5; item 7 records the same
+    decision). The anchor was **approved, not declined**, so the truncation
+    residual is narrowed rather than accepted outright: an attacker with both
+    store-write and log-write access on the same host can still forge history
+    (default Docker deployment, SPEC §10) and can suppress webhook delivery,
+    but suppression is visible to the recipient as a head that stops advancing
+    and a forged history contradicts the anchors the recipient already holds.
+    A1-6.6 accordingly prints the **narrowed** residual, and detection depends
+    on the recipient retaining and comparing its anchors against that block's
+    `head_seq`/`head_hash`.
+17. **A1 §6.9 — user/session audit ownership — Decided (product owner,
+    2026-09-21, PR #2 item D9).** A1 chains engagement-scoped facts only;
+    authentication, session and role audit belong to A5 in a platform-scoped
+    store. **Known debt accepted at Freeze:** engagement operator assignment
+    (who may approve, ADR-0012 §1) is unaudited in v1 until A5 adds
+    `engagement_assignment_changed` additively (A1-3.5); an insider admin
+    self-assigning and then approving is detectable only in A5's store
+    (adversarial C-08).
 
 ### A0 amendment requests
 

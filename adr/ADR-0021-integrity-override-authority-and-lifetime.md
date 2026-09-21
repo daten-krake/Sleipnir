@@ -1,10 +1,11 @@
 # ADR-0021: Integrity-override authority and lifetime
 
-- **Status:** Proposed
+- **Status:** Accepted (decided 2026-09-11; accepted by the product owner
+  2026-09-21 in PR #2, item D1, ratified by that PR's merge)
 - **Date:** 2026-09-11
-- **Deciders:** product owner (decision, session 2026-09-11); architect
-  (adversarial review findings C-01, S-07); principal build engineer (fix-plan
-  ruling PO-1)
+- **Deciders:** product owner (decision, session 2026-09-11; acceptance, PR #2
+  item D1, 2026-09-21); architect (adversarial review findings C-01, S-07);
+  principal build engineer (fix-plan ruling PO-1)
 
 ## Context
 
@@ -103,11 +104,24 @@ owner who needs a stricter rule compensates with their own review and logging of
   - **A5** MUST gate `integrity_override` on the admin role and return
     `forbidden` (A0-3.1, principal-level, naming no object) to an operator; the
     machine-principal exclusion list already forbids it (Q6, A1-2.7, A1-3.4).
-  - **D5 / A1 §6.16** (out-of-band head anchoring over the ADR-0012 §3 signed
-    webhook) is now load-bearing for this decision, not merely nice to have: the
-    accepted risk is "the owner can see everything", which requires that the
-    `artifact_released` trail cannot be truncated by an attacker with store
-    access. If D5 is declined, the residual risk wording in A1-6.6 must say so.
+  - **D5 / A1 §6.16 — DISCHARGED (product owner decision 2026-09-21, PR #2 item
+    D5: approved, not declined).** Out-of-band head anchoring over the ADR-0012
+    §3 signed webhook was load-bearing for this decision rather than merely nice
+    to have, because the accepted risk is "the owner can see everything", which
+    requires that the `artifact_released` trail cannot be truncated by an
+    attacker with store access. The anchor is therefore **normative**: A1-5.8
+    mitigation (4) MUST deliver `(engagement_id, head_seq, head_hash,
+    integrity_state, chain_spec)` to a recipient outside the deployment at every
+    head-emission point, and each attempt composes `notification_sent` with
+    `notification_kind:"chain_head_anchor"`, so the set of anchors the platform
+    claims to have sent is itself inside the chain it anchors. Delivery is
+    best-effort and MUST NOT gate the append, the verification or the export.
+    The residual is **narrowed, not closed** and A1-6.6 prints the narrowed
+    wording: an attacker with store-write *and* log-write on the same host can
+    still forge history and suppress a delivery, but suppression is visible to
+    the recipient as a head that stops advancing, and detection now depends on
+    that recipient retaining and comparing its anchors. A customer running no
+    such recipient MUST be told the truncation case is open for them.
   - **A SaaS/multi-tenant offering MUST reopen this ADR**: per-customer
     separation of override authority, and four-eyes for `scope:"export"`
     (adversarial A15), are not expressible in a single-tenant admin role.

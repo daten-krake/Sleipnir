@@ -5,11 +5,11 @@
 | | |
 |---|---|
 | **Contract id** | A2 |
-| **Status** | `Draft` (`contracts/README.md` lifecycle: Draft → Frozen → Implemented) |
+| **Status** | `Frozen` — product owner, 2026-09-21, PR #2 (`contracts/README.md` lifecycle: Draft → Frozen → Implemented) |
 | **Owner** | architect |
 | **Gates** | A3 (stage views) · A4 (`/api/v1` graph endpoints) · A5 (token scopes: graph writes are excluded for machine principals) · `internal/graph`, `internal/policy`, the ingest path, the report builder |
 | **Implements** | ADR-0016 §1–§5 · ADR-0005 §2/§3/§5 · ADR-0009 §1–§2 · ADR-0019 §2/§5 · ADR-0020 §3–§4 · SPEC §6, §8, C8 · Q1, Q2, Q3, Q4, Q5, Q6 (+ Q6 worker addendum) · adversarial A1, A12 |
-| **Depends on** | A0 (**Draft** at the time of writing; every work package below is gated on the A0/A1/A2 Freeze PR) — ids A0-1.2, canonical JSON A0-2, error kinds A0-3, paging A0-4, time A0-5, unknown fields A0-6, size caps A0-7, field conventions A0-8 · A1 (event envelope fields consumed by provenance, A2-5.4) |
+| **Depends on** | A0 (**Frozen** 2026-09-21 together with this document, PR #2) — ids A0-1.2, canonical JSON A0-2, error kinds A0-3, paging A0-4, time A0-5, unknown fields A0-6, size caps A0-7, field conventions A0-8 · A1 (event envelope fields consumed by provenance, A2-5.4) |
 | **Authority** | ADR > SPEC > DESIGN > contract. A clause here that contradicts an Accepted ADR is a defect in this document. A0 owns every cross-cutting convention; A2 cites A0 clause ids instead of restating them, and requests amendments only in §6. |
 | **Review provenance** | Clause rationale may cite review finding ids — `P-nn` (buildability and cross-document consistency) and `C-nn`/`S-nn`/`F-nn`/`D-nn`/`T-nn`/`E-nn` (adversarial) — from `docs/reviews/2026-09-11-contract-review-principal.md` and `docs/reviews/2026-09-11-contract-review-adversarial.md`; the merged fix plan is `docs/reviews/2026-09-11-contract-fix-plan.md`. Those ids are audit trail, not normative references: no clause depends on them. |
 
@@ -173,20 +173,20 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
 - **A2-2.5** `severity` (closed, `finding` only): `info`, `low`, `medium`,
   `high`, `critical`. No CVSS field in v1; a numeric score MAY be carried in
   `attrs` as a fixed-point integer `cvss_v3_x10` (scale ×10 fixed **here**, as
-  A0-2.6 requires of the owning contract). **PO confirm** (§6.8).
+  A0-2.6 requires of the owning contract). The **value range of `cvss_v3_x10` stays deliberately undeclared** (product owner decision 2026-09-21, PR #2 debt item 4): declaring a range later **narrows an accepted value set** and is therefore **not additive-safe** (A0-6.5) — it requires an ADR (A0-7.2), not an editorial change. **Decided** (product owner, 2026-09-21, PR #2 §6.8).
 - **A2-2.6** `status` is per kind and closed:
   - `finding`: `open`, `confirmed`, `refuted`, `remediated`.
   - `hypothesis`: `open`, `supported`, `refuted`.
   There is deliberately **no** `superseded` status: supersession is expressed
   by the `supersedes` edge and `superseded_by_id` (A2-4), and a second encoding
-  would be a second source of truth. **PO confirm** (§6.7).
+  would be a second source of truth. **Decided** (product owner, 2026-09-21, PR #2 §6.7).
 - **A2-2.7** `confidence` is **not** a finding field: it is the provenance
   confidence of A2-5.6 and appears exactly once per provenance entry on every
   node and edge. Q2's "Finding carries confidence" is discharged by the
   mandatory provenance block — a second confidence field would let a worker
-  assert confidence in its own claim without an evidence grade. This is a
-  **change to a locked PO decision (Q2) and requires the product owner's
-  signature, not confirmation** (§6.1, §6 item 13). With A2-4.7's provenance
+  assert confidence in its own claim without an evidence grade.
+  **Signed by the product owner 2026-09-21 (PR #2 item D2) → ADR-0022.** The provenance grade `observed · inferred · verified` on every node and edge replaces Q2's finding-level `confidence`; the deviation from Q2's literal wording is now a decision, not a draft proposal.
+  The decision is recorded at §6.1 and §6 item 13. With A2-4.7's provenance
   set, `verified` is reachable: it requires a second, independent observation
   (A2-5.6).
 - **A2-2.8** Who may set what:
@@ -259,8 +259,9 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   accompanied by an A1 event carrying the reason. A retracted edge, and any
   edge with a quarantined endpoint (A2-8.4), MUST NOT be returned by
   planning-facing reads (A2-12.4). Content is not overwritten — `kind` and
-  endpoints stay. **PO confirm** (§6.5: alternative is to leave edges
-  uncorrectable and revise endpoint nodes instead).
+  endpoints stay. **Decided** (product owner, 2026-09-21, PR #2 §6.5 —
+  alternative was to leave edges uncorrectable and revise endpoint nodes
+  instead).
 
 ### A2-4 · Revision, supersession and the content fingerprint
 
@@ -415,7 +416,7 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   differ, and copying one into the other is a defect.
   `Tests: TestPrincipalKindIsNotCopiedFromActor, TestFieldNameMappingIsTotal`.
 
-  **AM-1 — resolved by default for the Freeze (PO confirm):** A0-1.2 registers the human-principal prefix `usr_` (`^usr_B{26}$`, 30 B) and A0 §4 adds `KindUser`. A0 owns id *shapes*; delegating the spelling to A5 would split A0-1.5 validation across two contracts. Every user-composed A1 kind (`actor.principal_id`, A1-2.2) and every A2 operator write (`user_id`, A2-5.3) validates against it. The product owner MUST confirm the prefix spelling before Frozen; it is additive-only afterwards (A0-1.10).
+  **AM-1 — resolved and confirmed at the Freeze (product owner decision 2026-09-21, PR #2 item D3):** A0-1.2 registers the human-principal prefix `usr_` (`^usr_B{26}$`, 30 B) and A0 §4 adds `KindUser`. A0 owns id *shapes*; delegating the spelling to A5 would split A0-1.5 validation across two contracts. Every user-composed A1 kind (`actor.principal_id`, A1-2.2) and every A2 operator write (`user_id`, A2-5.3) validates against it. The prefix spelling is confirmed and is additive-only from here (A0-1.10).
 - **A2-5.4** Tie into A1: `event_id` MUST reference an event that exists **in
   this engagement** (A2-11). A2 consumes the A1 envelope fields `event_id`,
   `kind`, `recorded_at`, `seq` (the A1 **event** seq, not A2-1.4a's
@@ -441,9 +442,9 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   entry whose `event_id` differs from every existing one **and** whose
   `task_id`/`agent_node_id` differ — so no single observation can assert it.
   `Tests: TestVerifiedRequiresIndependentObservation,
-  TestSelfObservedNodeStaysInferred`. **PO signature required** (§6.1, §6 item
-  13: the grade scale deviates from Q2's literal wording; alternative scale
-  `low`/`medium`/`high`).
+  TestSelfObservedNodeStaysInferred`. **Signed by the product owner 2026-09-21 (PR #2 item D2) → ADR-0022.** The provenance grade `observed · inferred · verified` on every node and edge replaces Q2's finding-level `confidence`; the deviation from Q2's literal wording is now a decision, not a draft proposal.
+  The rejected alternative scale was `low`/`medium`/`high`; the decision is
+  recorded at §6.1 and §6 item 13.
 - **A2-5.7** A write whose provenance cannot be established MUST NOT be
   stored, MUST NOT be stored with placeholder or synthesized values, and
   returns: `internal` (500) when the platform ingest path failed to produce an
@@ -585,7 +586,7 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   `quarantine_recomputed{scope_changed}` plus the per-node recomputation, stored as
   `quarantined:false` with `quarantine_reason` absent. The stored reason MUST be
   derived by the platform from this mapping, never copied from an event string.
-  (**PO confirm**, §6 item 14 — byte-identical to A1 §6's ruling.)
+  (**Decided** (product owner, 2026-09-21, PR #2 item D6), §6 item 14 — byte-identical to A1 §6's ruling.)
 
   An admin or the assigned operator MAY **tighten** quarantine (`SetQuarantine`
   with `quarantined:true`, preserving the reason in force) and MUST be
@@ -667,8 +668,9 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   `quarantine_reason:"blacklisted"`, permanently non-releasable, absent from
   planning views (A2-12.5), reported as "not tested" (A2-8.6), and the write
   MUST emit `graph_node_quarantined{blacklist_match}` (A2-8.10, A2-8.1's
-  mapping). **PO confirm** (§6 item 12: the alternative reading of ADR-0016 §2
-  is to refuse the write and store nothing).
+  mapping). **Decided** (product owner, 2026-09-21, PR #2 item D7 — §6 item 12:
+  the alternative reading of ADR-0016 §2 is to refuse the write and store
+  nothing).
   `Tests: TestBlacklistedNodeSurvivesScopeWidening,
   TestBlacklistedDiscoveryIsRecordedNotRefused`.
 - **A2-8.6** Reporting handover (Q5): quarantined nodes MUST be included in the
@@ -691,7 +693,7 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   and no `supersedes` chain or evidence reference breaks (ADR-0016 §4). A
   delete endpoint for graph content MUST NOT exist in v1.
   `Tests: TestReportExcludedRequiresQuarantine,
-  TestMachinePrincipalCannotSetReportExcluded`. **PO confirm** (§6.4).
+  TestMachinePrincipalCannotSetReportExcluded`. **Decided** (product owner, 2026-09-21, PR #2 §6.4).
 - **A2-8.8** `report_excluded` MUST NOT be settable by a machine principal
   (Q6) and MUST NOT alter planning behaviour — it is a reporting filter only.
   `Tests: TestQuarantineFlagCannotBeSuppliedOnWrite,
@@ -1684,29 +1686,32 @@ A2-10.6 (`TestGraphSeamHasExactlyFourMutationMethods` /
 
 ## 6. Open for product owner
 
-Recommendations that are genuinely product-owner calls. Each is marked **PO
-confirm** at the clause too; none is decided silently. A2 cites **current** A0
-throughout (A0-1.2's `usr_`, A0-7.1's registry rows, A0-3.6's `node_id`
-reservation); the four A0 amendment requests below were ruled during the Freeze
-review (`docs/reviews/2026-09-11-contract-review-principal.md` §3) and are
-recorded with their rulings, not left as open asks.
+**All items answered** — product owner, 2026-09-21, PR #2 (D1–D9 plus the 46-item confirm checklist). This section is now the decision record; the markers below cite the decision instead of requesting it.
+
+Recommendations that were genuinely product-owner calls.
+Each was marked at the clause as needing the product owner's confirmation; none was decided silently, and each now cites the decision.
+A2 cites **current** A0 throughout (A0-1.2's `usr_`, A0-7.1's registry rows,
+A0-3.6's `node_id` reservation); the four A0 amendment requests below were ruled
+during the Freeze review
+(`docs/reviews/2026-09-11-contract-review-principal.md` §3) and are recorded
+with their rulings, not left as open asks.
 
 1. **A2-5.6 / A2-2.7 — confidence semantics.** Recommend the evidence grade
    `observed` · `inferred` · `verified` instead of `low`/`medium`/`high`.
    _ADR-0016 §1: graph content is evidence, not opinion — a grade tied to a
    referenced event is checkable, an adjective about certainty is not._ Also
    confirms that Q2's "Finding carries confidence" is discharged by the
-   mandatory provenance block rather than a second finding field. This is a
-   **change to a locked PO decision and needs a signature, not a confirmation**
-   — item 13 is the wording the product owner signs.
+   mandatory provenance block rather than a second finding field. **Signed by the product owner 2026-09-21 (PR #2 item D2) → ADR-0022.** The provenance grade `observed · inferred · verified` on every node and edge replaces Q2's finding-level `confidence`; the deviation from Q2's literal wording is now a decision, not a draft proposal.
+   Item 13 is the wording the product owner signed.
 2. **A2-5.3 — the human-principal id shape (AM-1): resolved by default for the
    Freeze.** A0-1.2 now registers `usr_` (`^usr_B{26}$`, 30 B) and A0 §4 adds
    `KindUser`, so a `principal_kind: user` entry's `user_id` validates per
    A0-1.5; operator corrections and A2-8.7 report exclusion are unblocked and
    nothing here waits on A5 (A0 owns id *shapes* — delegating the spelling
    would split A0-1.5 validation across two contracts). The AM-1 note in A2-5.3
-   is the normative text. What remains is a **PO confirm** of the prefix spelling
-   only, and it is additive-only afterwards (A0-1.10). The former reading of
+   is the normative text. The prefix spelling is **confirmed** (product owner
+   decision 2026-09-21, PR #2 item D3) and is additive-only from here
+   (A0-1.10). The former reading of
    this item — "`operator_id` has no id shape, so `principal_kind: operator`
    writes MUST be refused" — is withdrawn: the enum value is `user` and the
    field is `user_id` (A2-5.3, A2-2.8).
@@ -1716,8 +1721,9 @@ recorded with their rulings, not left as open asks.
    the most valuable line in a customer report; refusing the write would leave
    the near-miss unprovable._ The alternative reading of ADR-0016 §2
    ("cannot be represented at all" = refuse the write) is defensible and
-   minimizes stored data about a forbidden system — PO call. **The Freeze
-   wording the product owner confirms is item 12.**
+   minimizes stored data about a forbidden system — the product owner ruled
+   (2026-09-21, PR #2 item D7). **The Freeze wording is item 12, and it is
+   confirmed.**
 4. **A2-8.7 — report exclusion by flag + event, not deletion.** Recommend
    `report_excluded` plus a mandatory A1 event; no graph delete endpoint in v1.
    _Deletion breaks `supersedes` chains, dangling `evidence_ids`, and the
@@ -1743,6 +1749,7 @@ recorded with their rulings, not left as open asks.
    `cvss_v3_x10` (integer ×10, the scale A0-2.6 requires the owning contract
    to fix). _A CVSS vector string is a 2 KiB free-text blob that would eat the
    `FindingSummaryMaxBytes` budget and is not needed for v1 routing._
+   The **value range of `cvss_v3_x10` is deliberately undeclared** (product owner decision 2026-09-21, PR #2 debt item 4): A2 fixes the scale (×10 integer) and no bounds. Declaring a range later **narrows an accepted value set** and is therefore **not additive-safe** (A0-6.5) — it requires an ADR (A0-7.2), not an editorial change.
 9. **A2-5.4 — the A1 envelope and the A1 kinds A2 consumes.** The envelope
    fields A2 consumes (`event_id`, `kind`, `recorded_at`, `seq`,
    `engagement_id`, `run_id`, `job_id`) are **A1-1.1's**: A1 owns the envelope,
@@ -1767,13 +1774,15 @@ recorded with their rulings, not left as open asks.
     but reject risks stalling an engagement on a false positive, which is why
     the pattern set must ship with the contract test corpus._
 
-    **Ruled once for both contracts (PO confirm): reject, never redact.** A secret-pattern hit (A2-9.4 rule ids) is a hard reject — `validation` (400) naming the field and the rule id, the value never echoed in whole, in part or as a digest (A0-3.4) — and the rejection is chained (`action_blocked`). Redaction was rejected: a false positive would silently destroy a worker's only report of what it ran, and `redacted:true` (A1-4.6) means platform redaction, never rejection. The false-positive risk is controlled by shipping the A2-9.4 rule table with the planted-secret corpus. A1 §6.4 and A2 §6.10 are the same question and MUST NOT be answered differently.
+    **Ruled once for both contracts (product owner decision 2026-09-21, PR #2 item D8): reject, never redact.** A secret-pattern hit (A2-9.4 rule ids) is a hard reject — `validation` (400) naming the field and the rule id, the value never echoed in whole, in part or as a digest (A0-3.4) — and the rejection is chained (`action_blocked`). Redaction was rejected: a false positive would silently destroy a worker's only report of what it ran, and `redacted:true` (A1-4.6) means platform redaction, never rejection. The false-positive risk is controlled by shipping the A2-9.4 rule table with the planted-secret corpus. A1 §6.4 and A2 §6.10 are the same question and MUST NOT be answered differently.
 11. **A2-12.3 — A0-7.10 is explicitly not resolved here.** A2 states only what
     A3 may rely on (A2-12.2). The 500-node/64 KiB composition rule stays with
-    A3 and the PO escalation already recorded in A0 §6.14.
-12. **A2-8.5 — blacklisted discovery: recorded, not refused (PO confirm).** The Freeze stores the node with `quarantine_reason:"blacklisted"`, never releasable, never in a planning view, and chains `graph_node_quarantined{blacklist_match}` — "we saw the forbidden target and did not touch it". The alternative reading of ADR-0016 §2 (refuse the write, store nothing about a forbidden system) is defensible and minimizes stored data; the product owner MUST confirm before Frozen, because refusing the write makes the near-miss unprovable in a customer report.
-13. **A2-2.7 / A2-5.6 — deviation from Q2 (PO signature required, not confirmation).** Q2 records "Finding carries confidence". A2 implements that as the mandatory provenance grade `observed · inferred · verified` on every node and edge instead of a finding field, so a grade is always tied to a referenced event (ADR-0016 §1: evidence, not opinion). This **changes a locked decision**; the product owner MUST sign it before A2 flips to Frozen. With A2-4.7's bounded provenance list `verified` is now reachable: it requires a second, independent observation.
-14. **PO confirm — operator release of quarantine is removed.** `operator_release` is deleted from A1's `quarantine_kind` enum and A2 provides no release operation: an `out_of_scope` node is released **only** by an operator scope change and the recomputation it causes (A2-8.5, ADR-0016 §2 — an out-of-scope node can never be a target of a planned action). `operator_quarantine` (tightening) is kept, and a `blacklisted` node is never releasable. If the product owner wants a manual release it MUST be a new ADR amending ADR-0016 §2 and MUST require the target to be inside the widened allowlist at release time.
+    A3: the interim fail-safe of A0-7.10 is confirmed (product owner decision
+    2026-09-21, PR #2 item D4) and A3 owns the real composition rule, which must
+    also budget bytes for the ADR-0022 provenance grade.
+12. **A2-8.5 — blacklisted discovery: recorded, not refused (Decided — product owner, 2026-09-21, PR #2 item D7).** The Freeze stores the node with `quarantine_reason:"blacklisted"`, never releasable, never in a planning view, and chains `graph_node_quarantined{blacklist_match}` — "we saw the forbidden target and did not touch it". The alternative reading of ADR-0016 §2 (refuse the write, store nothing about a forbidden system) is defensible and minimizes stored data; confirmed by the product owner 2026-09-21 (PR #2 item D7), because refusing the write would make the near-miss unprovable in a customer report.
+13. **A2-2.7 / A2-5.6 — deviation from Q2: SIGNED (product owner, 2026-09-21, PR #2 item D2 → ADR-0022).** Q2 records "Finding carries confidence". A2 implements that as the mandatory provenance grade `observed · inferred · verified` on every node and edge instead of a finding field, so a grade is always tied to a referenced event (ADR-0016 §1: evidence, not opinion). This **changes a locked decision**; the product owner signed it on 2026-09-21, which is what lets A2 flip to Frozen; ADR-0022 records the change to Q2. With A2-4.7's bounded provenance list `verified` is now reachable: it requires a second, independent observation.
+14. **Decided (product owner, 2026-09-21, PR #2 item D6) — operator release of quarantine is removed.** `operator_release` is deleted from A1's `quarantine_kind` enum and A2 provides no release operation: an `out_of_scope` node is released **only** by an operator scope change and the recomputation it causes (A2-8.5, ADR-0016 §2 — an out-of-scope node can never be a target of a planned action). `operator_quarantine` (tightening) is kept, and a `blacklisted` node is never releasable. If the product owner wants a manual release it MUST be a new ADR amending ADR-0016 §2 and MUST require the target to be inside the widened allowlist at release time.
 
 ### A0 amendment requests
 
@@ -1784,7 +1793,7 @@ A2 depends on in A0, with the ruling in the last column.
 
 | # | A0 clause | Request | Ruling and why A2 needs it |
 |---|---|---|---|
-| AM-1 | A0-1.2 | Register a prefix for a human principal (`usr_`) | **Resolved by default for the Freeze** (the normative note is in A2-5.3): A0-1.2 registers `usr_` (`^usr_B{26}$`, 30 B) and A0 §4 adds `KindUser`, so A2-5.3's `user_id` validates per A0-1.5. Not delegated to A5 — A0 owns id *shapes*. **Awaits PO confirmation of the spelling only** (§6 item 2); additive-only afterwards (A0-1.10) |
+| AM-1 | A0-1.2 | Register a prefix for a human principal (`usr_`) | **Resolved by default for the Freeze** (the normative note is in A2-5.3): A0-1.2 registers `usr_` (`^usr_B{26}$`, 30 B) and A0 §4 adds `KindUser`, so A2-5.3's `user_id` validates per A0-1.5. Not delegated to A5 — A0 owns id *shapes*. **Spelling confirmed** (product owner decision 2026-09-21, PR #2 item D3, §6 item 2); additive-only afterwards (A0-1.10) |
 | AM-2 | A0-7.1 | Adopt the A2 cap constants (`NodeSummaryMaxBytes`, `FindingSummaryMaxBytes`, `MaxSupersedeChain`, `AttrsMaxKeys`, `AttrKeyMaxBytes`, `AttrValueMaxBytes`, `AttrsTotalMaxBytes`, `AddressesMax`, `EvidenceRefsMax`, `ToolVersionMaxBytes`) into the single A0 table/const block | **Accepted**: A0-7.1 is the one place caps live, and A2-7.1 now cites the registry rows instead of declaring values. Two constants moved with it — A2's `EvidenceIDsMax` is gone in favour of `EvidenceRefsMax` = 8, and A2's former `ToolVersionMaxBytes` = 32 was a defect (the registry value 64 governs). A2-local constants stay A2's under A0-7.7's delegation |
 | AM-3 | A0-3.6 | Extend the `node_id` reservation from "errors and log attrs" to graph payloads, and bless A2's payload spellings (`source_id`, `target_id`, `supersedes_id`, `superseded_by_id`, `agent_node_id`) | **Accepted in part.** The reservation is granted: `node_id` means the remote agent node (`slp_node_`) everywhere, so A2-1.6's rule is enforceable and `TestNoBareNodeIDInGraphDocuments` has an A0 basis. Blessing A2's *field names* is refused — A0 does not own per-contract payload vocabularies. A2 publishes the mapping instead: A2-1.6's A1↔A2 table is the single source, cited by A1-3.6 |
 | AM-4 | A0-8.2 | Confirm `*_ref` is not needed: A2 uses `evidence_id` / `evidence_ids` for `evi_` references because A0-8.2 fixes `*_id` for identifiers | **Accepted**: no `*_ref` suffix is added, A2-9.2's spellings stand, and `evidence_refs` (A1-1.1) remains the single approved exception to A0-8.2 — one suffix convention per fact, no drift |

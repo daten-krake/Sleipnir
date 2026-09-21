@@ -19,6 +19,12 @@ without bloating context.
   64 KiB view cap; interim fail-safe = the smaller cap governs and the builder
   truncates). Q1's fixed-stage-views + capped-1-hop design stands; the
   `internal/handoff` placement question falls out of A3, not A1/A2.
+- 2026-09-21: **A3 is unblocked.** D4 was confirmed by the product owner
+  (PR #2): the interim fail-safe stands as the frozen rule, and **A3 owns the
+  real composition rule** — ~131 B per node is not a usable view, so A3 MUST
+  design compact refs with full summaries only in the capped 1-hop drill-down.
+  A3 must additionally budget bytes for the provenance evidence grade that
+  ADR-0022 puts on every node and edge.
 
 ### 2. Program layout (Go module structure)
 Package layout of the monorepo given stdlib-only + pgx exception.
@@ -46,6 +52,15 @@ Package layout of the monorepo given stdlib-only + pgx exception.
   categories, ~60 test ids named in the clauses they guard), then scaffold +
   `internal/errs` + `internal/logging`, then the foundation packages in the
   order the principal review's §4 proposes.
+- 2026-09-21: **A0/A1/A2 are `Frozen`** (PR #2, product owner decisions D1–D9 +
+  all three blocks of the 46-item confirm checklist). WP-00 flipped the
+  statuses, turned every one of the 51 `PO confirm`/`PO decision`/`PO signature`
+  markers into a decision record, made the **D5 signed-webhook head anchor
+  normative** (A1-5.8 mitigation (4), new `notification_kind:chain_head_anchor`),
+  and added **ADR-0022** (D2's signature: the provenance evidence grade replaces
+  Q2's finding-level `confidence`); ADR-0021 became Accepted. Next: **WP-01**,
+  the repo scaffold + `internal/errs` + `internal/logging` with their contract
+  tests (`next_steps.md` §3 allows the first package to land with its tests).
 - 2026-09-04 (design interview): **all session-1 decisions locked** —
   fixed stage views + capped 1-hop (no query endpoint v1); two node types
   Finding/Hypothesis; hard-reject validation; size budgets as contract
@@ -101,7 +116,7 @@ Findings tracker (details in `docs/adversarial-review-2026-09-03.md`):
 | A8 stored credentials | HIGH | flag | this session + session 6; A2-9 no-secret-values + the closed rule table |
 | A9 own-web attacks | MED | flag | this session + AGENTS.md review bar; untrusted content never becomes configuration (A1-4.4, A2-6.7) |
 | A10 tool supply chain | MED | flag | this session + tool-registry work; `image_digest` is registry-derived, never orchestrator-supplied |
-| A11 evidence tampering | MED | **contracted** | A1-5 (per-engagement chain, genesis, `chain_spec`), A1-6 (verification, `integrity_failed`, single-use admin override), `chain_head_trail` + `head_regression`; **residual:** tail truncation needs the webhook anchor (PR #2 **D5**) |
+| A11 evidence tampering | MED | **contracted** | A1-5 (per-engagement chain, genesis, `chain_spec`), A1-6 (verification, `integrity_failed`, admin-only override per ADR-0021), `chain_head_trail` + `head_regression`, **and the out-of-band signed-webhook head anchor of A1-5.8 (4)** (D5 approved 2026-09-21); **residual, narrowed not closed:** an attacker with store-write *and* log-write on one host can still forge history and suppress a delivery, but suppression is visible to the webhook recipient as a head that stops advancing — detection depends on that recipient retaining and comparing its anchors (A1-6.6) |
 | A12 cross-engagement leak | MED | **contracted** | A1-8.4/8.6, A2-11 + named negatives (`TestCursorFromEngagementARejectedInB`, `TestNoBulkEventReadSpansEngagements`, …); suite still to write |
 | A13 jailbreak vs safety | MED | accepted | covered by design |
 | A14 availability/DoS | LOW | flag | API design session; A1-6.8 rate-limits on-demand verification |
@@ -125,6 +140,14 @@ OIDC/JWT client, high-review bar).
 From PR gate to release: build (stdlib + vendored, reproducible), the
 WORKFLOW.md gates as pipeline steps, container image build/pin/sign
 pipeline (adversarial A10), versioning, rollback. Added 2026-09-04.
+- **2026-09-21, product owner: add CI *before* the first code package, not
+  after.** The repo has no `.github/workflows/`, so the WORKFLOW §4 merge gate
+  (`gofmt -l`, `go vet ./...`, `go build ./...`, `go test ./...`, `go mod
+  verify`) is currently unenforced and becomes load-bearing the moment
+  `internal/errs` lands. Scope for the first pipeline: those five gates on a
+  pinned Go toolchain, stdlib-only + `vendor/` consistency, and the
+  `docs/reviews/*-verify-vectors.py` contract-vector check for any PR touching
+  `contracts/`. Image build/pin/sign (A10) stays a later item.
 
 ### 10. Monitoring & observability
 Slog JSON export (ADR-0019 structure), health endpoints, per-run
@@ -142,17 +165,25 @@ quarantine model from role matrix). Added 2026-09-04.
 - Offline capability of the Pi agent (session 4).
 - Which AD attack techniques are in/out of v1 tool registry scope
   (session with tool baseline).
-- **PR #2 decisions D2–D9** (2026-09-11): the Q2 confidence deviation (needs a
-  signature), `usr_`, the A0-7.10 view-cap composition rule (**blocks A3**),
-  out-of-band head anchoring (now load-bearing for ADR-0021's accepted risk), no
-  operator release of quarantine, blacklisted discoveries recorded, reject vs
-  redact, and user/session audit ownership. **D1 is decided** → ADR-0021
-  (admin-only integrity override, *not* single-use, residual risk accepted by
-  the service owner and compensated by the chained `artifact_released` trail).
-- Known debt accepted at the freeze: engagement-assignment and
+- **Where attribute-level redaction lives** (new 2026-09-21, → §10): DESIGN §1
+  gives `logging` zero internal imports, so it cannot call `errs`' redaction
+  helpers. WP-01's ruling: `errs` owns redaction of error strings (`errs.Secret`
+  is leak-proof under every `fmt` verb and both encoders), `logging` takes only
+  caller-supplied correlation ids, and the `api` handler — which may import both
+  — is the only place a kind and a redacted attribute meet a log record. If the
+  observability session wants redaction enforced *inside* `logging`, that needs
+  a DESIGN §1 amendment or a third foundation package.
+- Known debt accepted at the freeze (2026-09-21): engagement-assignment and
   credential-revocation audit belong to A5; no `evidence_removed` kind, so
-  A1-8.8 stays unimplementable until one exists; `cvss_v3_x10` has no range
-  (P-77 — the only deferred item that is **not** additive-safe, needs an ADR).
+  A1-8.8 stays unimplementable until one exists; A1 §4.2 has no approval-path
+  JSON example (E-08); **`cvss_v3_x10` has no declared range** — the product
+  owner explicitly declined to declare one (2026-09-21), and because adding
+  `[0,100]` later *narrows* an accepted value set it is **not additive-safe**
+  (A0-6.5) and will need an ADR (A0-7.2).
+- **ADR-0022 follow-ups** (2026-09-21): the report and UI sessions MUST render
+  the provenance evidence grade itself, never a re-invented adjective, and MUST
+  show the provenance entries behind a `verified` grade; a *numeric* confidence
+  would reopen the two-sources problem ADR-0022 closes and needs its own ADR.
 - Store-seam duties the contracts hand to backlog §6: the per-engagement append
   lock (A1-5.4), dedup table (A1-7.6), ingest watermark (A1-7.7),
   `chain_head_trail` and the kill outbox with `REVOKE UPDATE, DELETE`, and any
@@ -160,6 +191,18 @@ quarantine model from role matrix). Added 2026-09-04.
 
 ## Resolved (kept for history)
 
+- ~~**PR #2 decisions D1–D9**~~ → all answered by the product owner 2026-09-21
+  (PR #2 body edit + session), A0/A1/A2 `Frozen`: **D1** admin-only integrity
+  override, *not* single-use → **ADR-0021 Accepted**; **D2 signed** →
+  **ADR-0022** (the provenance evidence grade `observed·inferred·verified`
+  replaces Q2's finding-level `confidence`); **D3** `usr_` registered in A0-1.2 +
+  `KindUser`; **D4** the interim fail-safe stands, A3 owns the real composition
+  rule; **D5 approved** — the ADR-0012 §3 signed-webhook head anchor is
+  normative (A1-5.8 (4)), which discharges ADR-0021's load-bearing follow-up;
+  **D6** no operator release of quarantine; **D7** blacklisted discoveries
+  recorded, not refused; **D8** reject, never redact; **D9** user/session audit
+  → A5 in a platform-scoped store. Plus all three blocks of the 46-item confirm
+  checklist (A0 §6.1–13, A1 §6.1,3,5–14, A2 §6.4–11).
 - ~~Approval timeout~~ → 2h default, configurable per engagement (ADR-0012).
 - ~~Notification channel priority~~ → signed webhooks only for v1 (ADR-0012).
 - ~~Embedded coding-agent harness~~ → own loop confirmed (ADR-0015).

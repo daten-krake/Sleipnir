@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | **Contract id** | A0 |
-| **Status** | `Draft` (`contracts/README.md` lifecycle: Draft → Frozen → Implemented) |
+| **Status** | `Frozen` — product owner, 2026-09-21, PR #2 (`contracts/README.md` lifecycle: Draft → Frozen → Implemented) |
 | **Owner** | architect |
 | **Gates** | A1 (events), A2 (graph) and every later contract (A3–A8); every package that serializes JSON, hashes a value, returns an error, or lists rows |
 | **Implements** | ADR-0010 §2–§3 · ADR-0011 · ADR-0012 §2/§7 · ADR-0016 §1/§4 · ADR-0018 §1–§3 · ADR-0019 §1–§5 · ADR-0020 §3–§4 · SPEC §2 C1/C9/C11, §6, §8, §9 · Q3, Q4, Q6, Q9, Q10, Q11, Q13, Q15 |
@@ -41,10 +41,12 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   no restriction. Validation (A0-1.5) is the regex only: a body whose first
   character is `8`–`z` is accepted but never generated.
   _One generator, no coordination, lexicographic order = chronological order,
-  stdlib-only (`crypto/rand` + a 32-char alphabet table) — **PO confirm**._
+  stdlib-only (`crypto/rand` + a 32-char alphabet table) — **Decided** (product
+  owner, 2026-09-21, PR #2 §6.1)._
 - **A0-1.2** Prefixes are closed and per type; the set is closed at **12**
-  prefixes. `slp_node_` is fixed by Q9; the rest are recommendations (**PO
-  confirm**). `B` below is the body of A0-1.1 and the regex character class
+  prefixes. `slp_node_` is fixed by Q9; the rest are recommendations —
+  **Decided** (product owner, 2026-09-21, PR #2 §6.2). `B` below is the body of
+  A0-1.1 and the regex character class
   `[0-9a-hjkmnp-tv-z]` is exactly that alphabet.
 
   | Entity | Prefix | Example | Regex | Total len |
@@ -66,7 +68,7 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   human-readable `name` and `version` are separate registry fields (ADR-0008,
   Q14) and MUST NOT be embedded in the id. _A slug id (`tool_nmap`) would have
   to change on rename/re-version, and ADR-0018 fingerprints must stay stable —
-  **PO confirm**._
+  **Decided** (product owner, 2026-09-21, PR #2 §6.3)._
 - **A0-1.4** Generation MUST use `crypto/rand`; MUST NOT use `math/rand`, a
   counter, a name, a hash of user input, or any client-supplied material. A
   uniqueness violation at insert MUST surface as `internal` (A0-3) and MUST NOT
@@ -159,7 +161,8 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   re-emitted verbatim (A0-2.5). _RFC 8785 requires ECMAScript number
   serialization, which is
   hand-rolled high-review-bar code (`AGENTS.md`) for a benefit nothing in the
-  hashed payloads needs — **PO confirm**._
+  hashed payloads needs — **Decided** (product owner, 2026-09-21,
+  PR #2 §6.5)._
 - **A0-2.7** Strings: escape only `"`, `\`, and U+0000–U+001F. Use the short
   escapes `\b \f \n \r \t` for those five and `\u00xx` (**lowercase** hex) for
   the other control characters; every other code point is literal. HTML
@@ -189,7 +192,8 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   (`validation`); size is `len(doc)` of the input; both are checked before
   canonicalization. This walk is AGENTS.md high-review untrusted-input parsing.
   _Untrusted-input bound (`AGENTS.md`
-  high-review list); contract types nest ≤ 6 — **PO confirm**._
+  high-review list); contract types nest ≤ 6 — **Decided** (product owner,
+  2026-09-21, PR #2 §6.6)._
   Tests: TestDepthLimit, TestSizeLimit.
 - **A0-2.12** A canonicalized type declares its **exclusion list**: a fixed set
   of *top-level JSON field names* removed before canonicalization (event chain
@@ -418,7 +422,8 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   maximum **1000**. A `limit` that is present but unparseable, ≤ 0,
   non-integer, or > 1000 MUST be rejected with `validation` — never silently
   clamped. _Silent clamping lets an agent believe it saw the whole collection
-  (Q3: never trust client discipline) — **PO confirm**._
+  (Q3: never trust client discipline) — **Decided** (product owner,
+  2026-09-21, PR #2 §6.10)._
   Tests: TestLimitValidation, TestLimitAboveMaxRejectedNotClamped.
 - **A0-4.6** Has-more detection: read `limit+1` rows, return the first `limit`,
   set `next_cursor` **iff** row `limit+1` existed. Contract test: a last page
@@ -448,7 +453,7 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
 - **A0-5.2** One precision for the whole platform: **milliseconds**. _ms is the
   resolution of the A0-1.1 body timestamp and of every clock we read; µs/ns
   would make canonical bytes encoder-dependent and burn the 512 B summary
-  budget (A0-7) — **PO confirm**._
+  budget (A0-7) — **Decided** (product owner, 2026-09-21, PR #2 §6.7)._
 - **A0-5.3** Parsing MUST reject, not normalize (Q3 philosophy): any other
   precision, a numeric offset (`+02:00`), lowercase `t`/`z`, a space separator,
   a leap second (`:60`), or a year outside `[2020, 2100)` → `validation`.
@@ -528,7 +533,8 @@ Both rules, side by side — neither generalizes to the other:
   Consequence: the platform is upgraded **before** agent images — a newer agent
   image against an older platform fails fast instead of losing data (C7 pins
   agent images per run). Q3 mandates hard reject for graph writes; extending it
-  to all writes is a recommendation — **PO confirm**._
+  to all writes is a recommendation — **Decided** (product owner, 2026-09-21,
+  PR #2 §6.8)._
 - **A0-6.3** Enums: an unknown or malformed value of a closed list (node kind,
   edge kind, event kind, error kind, any status) on a **write** is hard-rejected
   with `validation` (Q3). On a **read**, a client MUST NOT coerce an unknown
@@ -538,8 +544,8 @@ Both rules, side by side — neither generalizes to the other:
   _Additive-only evolution plus the `/api/v1` path prefix already identifies
   the shape; a per-object version counter inside a hashed document would make
   every digest depend on a mutable field and would have to be excluded from the
-  canonical form (A0-2.12) — a second source of truth for no gain — **PO
-  confirm**._
+  canonical form (A0-2.12) — a second source of truth for no gain —
+  **Decided** (product owner, 2026-09-21, PR #2 §6.9)._
 - **A0-6.5** Additive-only inside `/api/v1` (Q13). **Additive:** a new response
   field, a new enum value, a new event/node/edge kind, a new error kind, a new
   endpoint, a new id prefix. **Breaking (→ `/api/v2` + new ADR):** removing,
@@ -632,7 +638,8 @@ Both rules, side by side — neither generalizes to the other:
   assignment in their own contract. A0 defines the mechanisms and holds the
   registry (A0-7.1); the mechanism a class gets stays the owning contract's
   assignment. Recommended default: client-submitted summaries → R;
-  platform-computed view fields → T (**PO confirm**).
+  platform-computed view fields → T — **Decided** (product owner, 2026-09-21,
+  PR #2 §6.13).
 - **A0-7.8** The enforcement point is the platform ingest/render path, never
   the producer (Q3: never trust worker discipline). A client-side pre-check MAY
   exist and is not enforcement.
@@ -1048,9 +1055,12 @@ counterparts are its rejection entries.
 
 ## 6. Open for product owner
 
+**All items answered** — product owner, 2026-09-21, PR #2 (D1–D9 plus the 46-item confirm checklist). This section is now the decision record; the markers below cite the decision instead of requesting it.
+
 Recommendations that are genuinely product-owner calls (naming, alphabets,
-precision, algorithms). Each is marked **PO confirm** at the clause too; none is
-decided silently.
+precision, algorithms). Each was marked at the clause as needing the product
+owner's confirmation; none was decided silently, and each now cites the
+decision.
 
 1. **A0-1.1** Id body: lowercase Crockford base32, 26 chars (48-bit ms + 80-bit
    `crypto/rand`), ULID layout. _Sortable, stdlib-only, no coordination._
@@ -1084,18 +1094,19 @@ decided silently.
 13. **§4** New foundation packages `internal/ids` and `internal/cjson`
     (DESIGN §1 allows adding packages within the layer rules); A0-7.3's
     recommendation that A3 transmit stage views in canonical form.
-14. **A0-7.10 — needs a decision, not a confirmation.** The Q4 caps cannot all
-    be satisfied by a maximal stage view (500 × 512 B ≈ 250 KiB > 64 KiB;
-    ~131 B per node). A3 needs a composition rule. **Interim rule applied for the Freeze
+14. **A0-7.10 — DECIDED (product owner decision 2026-09-21, PR #2 item D4).**
+    The Q4 caps cannot all be satisfied by a maximal stage view (500 × 512 B
+    ≈ 250 KiB > 64 KiB; ~131 B per node). A3 needs a composition rule. **Interim rule applied for the Freeze
     (A0-7.10):** where two A0-7.1 caps cannot both hold for one
     composed document, the smaller governs and the builder truncates with mechanism
-    T. The product owner MUST confirm this fail-safe default or replace it with A3's
-    composition rule before A3 is drafted; ~131 B per node is not a usable view
-    budget.
-15. **AM-1 — resolved by default for the Freeze (PO confirm):** A0-1.2 registers
-    the human-principal prefix `usr_` (`^usr_B{26}$`, 30 B) and A0 §4 adds
-    `KindUser`. A0 owns id *shapes*; delegating the spelling to A5 would split
-    A0-1.5 validation across two contracts. Every user-composed A1 kind
-    (`actor.principal_id`, A1-2.2) and every A2 operator write (`user_id`,
-    A2-5.3) validates against it. The product owner MUST confirm the prefix
-    spelling before Frozen; it is additive-only afterwards (A0-1.10).
+    T. Confirmed by the product owner 2026-09-21 (PR #2 item D4): the fail-safe
+    default stands and **A3 owns the real composition rule** — ~131 B per node
+    is not a usable view, so A3 MUST design compact refs with full summaries
+    only in the capped 1-hop drill-down.
+15. **AM-1 — resolved and confirmed at the Freeze (product owner decision
+    2026-09-21, PR #2 item D3):** A0-1.2 registers the human-principal prefix
+    `usr_` (`^usr_B{26}$`, 30 B) and A0 §4 adds `KindUser`. A0 owns id *shapes*;
+    delegating the spelling to A5 would split A0-1.5 validation across two
+    contracts. Every user-composed A1 kind (`actor.principal_id`, A1-2.2) and
+    every A2 operator write (`user_id`, A2-5.3) validates against it. The prefix
+    spelling is confirmed and is additive-only from here (A0-1.10).
