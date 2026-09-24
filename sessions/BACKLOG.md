@@ -76,6 +76,25 @@ Package layout of the monorepo given stdlib-only + pgx exception.
   rather than trusting a reviewer. Next: the remaining foundation packages in
   the principal review §4's order (`ids`, `cjson`, `paging`, `timex`, `caps`),
   then the shared contract-test suite.
+- 2026-09-24: **WP-04/05/06 delivered** — `internal/ids` (A0-1),
+  `internal/timex` (A0-5) and `internal/caps` (A0-7): 9 files, 2045 lines, and
+  the 15 test ids A0 §4.1 plus the principal review name — no others,
+  everything else a subtest. The A0 §4 import rule is verified, not trusted:
+  `go list -deps` shows `caps` with **zero** internal imports (it returns no
+  errors, so it needs no `errs`) and `ids`/`timex` with only `errs`. Five gates
+  green plus `-race`; `go.mod` still at zero requires; contract vectors still
+  **PASS 52 / FAIL 0**. Three independent reviews found **no code defect at
+  all** — all 18 findings were a test's non-vacuity, a comment's accuracy or a
+  gap in a package doc's coverage trail (e.g. an import allow-list that never
+  *required* `crypto/rand`; a truncation corpus that left the rune walk-back's
+  zero-budget path untested). Two **contract errata** came out of it, both
+  product-owner decisions recorded as A0 §6 items 16 and 17: the truncation
+  marker is 11 B, not the 12 B A0-7.5 claimed, and A0-5.3's rationale "Go
+  normalizes leap seconds" is false (`time.Parse` rejects `:60`; the real
+  hazard is `Z07:00` accepting `+02:00`), with §4.1 now naming WP-10 as the
+  owner of the two clamp test ids. Next: **WP-07 `internal/cjson`** (A0-2, the
+  high-review-bar package), then **WP-08 `internal/paging`**, with **WP-13
+  `internal/secretscan`** parallel to both.
 - 2026-09-04 (design interview): **all session-1 decisions locked** —
   fixed stage views + capped 1-hop (no query endpoint v1); two node types
   Finding/Hypothesis; hard-reject validation; size budgets as contract
@@ -115,6 +134,13 @@ PostgreSQL schema (ADR-0010): projects, runs, events, evidence, approvals,
 users, tool registry — plus the **context graph tables** (ADR-0016).
 Event table is the spine. Includes: **hash-chained event log** (adversarial
 review A11), schema migrations strategy, retention columns.
+- **A0-1.9's `TestIDOrderingMatchesByteOrderCollateC` is an explicit acceptance
+  item here** (2026-09-24): `internal/ids` deliberately does not ship it — it
+  is a PostgreSQL integration test, opt-in per DESIGN §8, and a skipped test is
+  worse than an absent one — so the A0-1.9 pairing is owned by
+  `store/postgres`: `COLLATE "C"` declared **on the column** in the DDL, never
+  re-specified per query (a per-query `COLLATE` silently disables index use on
+  every paginated read, A0-4.6).
 
 ### 7. Security hardening (from adversarial review 001)
 Findings tracker (details in `docs/adversarial-review-2026-09-03.md`):
@@ -208,16 +234,6 @@ quarantine model from role matrix). Added 2026-09-04.
   — is the only place a kind and a redacted attribute meet a log record. If the
   observability session wants redaction enforced *inside* `logging`, that needs
   a DESIGN §1 amendment or a third foundation package.
-- **Whether ADR-0019 needs an amendment note for A0-3.6's attribute spelling**
-  (new 2026-09-21, product owner): ADRs are immutable once Accepted, and
-  ADR-0019 §3's literal reading still says `engagement`/`run`/`job`/`node`
-  while frozen A0-3.6 rules `engagement_id`/`run_id`/`job_id`/`node_id` — where
-  `node_id` is the *remote agent node* (`slp_node_`) and a graph node is
-  `graph_node_id` (`gn_`), which must never be conflated. WP-01.2 treats this as
-  a naming clarification of an Accepted ADR by a frozen contract rather than a
-  new decision, so no new ADR was raised; the deviation is recorded in the
-  `logging` package doc comment and promoted into `AGENTS.md`. A ruling is
-  needed on whether the ADR should also carry a note.
 - Known debt accepted at the freeze (2026-09-21): engagement-assignment and
   credential-revocation audit belong to A5; no `evidence_removed` kind, so
   A1-8.8 stays unimplementable until one exists; A1 §4.2 has no approval-path
@@ -235,6 +251,14 @@ quarantine model from role matrix). Added 2026-09-04.
   checkpoint/re-genesis mechanism (A1-6.9 — needs its own ADR).
 
 ## Resolved (kept for history)
+
+- ~~**Whether ADR-0019 needs an amendment note for A0-3.6's attribute
+  spelling**~~ → **ruled by the product owner 2026-09-24:** yes — a
+  spelling-only amendment note inside the Accepted ADR, decision text
+  unchanged, so no new ADR and nothing superseded (`adr/ADR-0019-…` §3 plus its
+  Status line). A0-3.6 governs: `engagement_id`/`run_id`/`job_id`/`node_id`,
+  with `graph_node_id` for a graph node and `node_id` always the remote agent
+  node (`slp_node_`, Q9).
 
 - ~~**PR #2 decisions D1–D9**~~ → all answered by the product owner 2026-09-21
   (PR #2 body edit + session), A0/A1/A2 `Frozen`: **D1** admin-only integrity

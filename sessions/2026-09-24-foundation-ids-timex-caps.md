@@ -67,6 +67,51 @@
   §6 item 16 recording it. `docs/reviews/2026-09-11-verify-vectors.py` still
   reports **PASS 52 / FAIL 0** and no raw U+2028/9/7F entered the file, so the
   CI `contracts` job stays green on a branch that touched `contracts/`.
+- **WP-04/05/06 delivered**: `internal/ids` (788 lines), `internal/timex`
+  (581), `internal/caps` (676) — 9 files, 2045 lines, **15 top-level test ids
+  and exactly those 15** (6 + 4 + 5, verbatim from A0 §4.1 and the principal
+  review's WP-04/05/06 rows; everything else is a subtest), 239 passing
+  tests/subtests. Import boundary verified mechanically rather than trusted:
+  `go list -deps` shows `caps` with **zero** internal imports (it returns no
+  errors, so it needs no `errs`) and `ids`/`timex` importing only
+  `internal/errs`, per the A0 §4 preamble. `go.mod` still has zero requires.
+- **Gates green, capped** (`ulimit -v 3G`, `GOMEMLIMIT=1GiB`, `-timeout`):
+  `gofmt -l` clean, `go vet ./...`, `go build ./...`, `go test ./...` and
+  `go test -race ./...` all pass on all five packages. After three contract
+  edits, `docs/reviews/2026-09-11-verify-vectors.py` still reports **PASS 52 /
+  FAIL 0** and no raw U+2028/9/7F entered the file.
+- **Independent review per package, then the fixes applied by the principal**
+  (commits `555ced2`+`a852f07` folded, `76cd3d1`+`a0ebed0` separate):
+  `ids` 7 findings (1 SHOULD FIX: the crypto/rand import check was an
+  allow-list only, so the positive half of A0-1.4's pair was vacuous), `caps` 6
+  (3 SHOULD FIX: a fixture named `mechanismTCaps` restated a per-field
+  mechanism registry the package deliberately does not own, three passages
+  called the erratum still outstanding, and the `limit == len(marker)+1`
+  boundary — the only path where the rune walk-back reaches zero with a
+  non-zero budget — was untested), `timex` 5 (1 MUST FIX, doc-only). **No
+  finding in any of the three was a code defect**: every one was a test's
+  non-vacuity, a comment's accuracy or a coverage gap in a package doc.
+- **The implementers found four defects in the principal's own input**, which
+  is what WORKFLOW §5's independent check is for: the marker's byte count
+  (contract, → A0 §6 item 16), Go's `.000` directive *truncating* rather than
+  rounding sub-millisecond digits (brief — re-verified here), a demanded
+  pre-1970 *positive* timestamp row that A0-5.3's `[2020, 2100)` window makes
+  impossible (brief — implemented as a rejection row plus a formatting row),
+  and A0-5.3's leap-second rationale plus §4.1's unnamed owner for the two
+  clamp test ids (contract, → A0 §6 item 17).
+- **One review lane lost, and the cause is a tooling mismatch, not an agent
+  error.** The builtin `reviewer` has no shell: two of the three review lanes
+  reported "not run by me, the supervisor must run the gates", and the third
+  spent four minutes in `find /` and had to be interrupted, its report
+  unrecoverable. Re-run with a brief that states the absence of a shell and
+  forbids searching outside the repo, it completed clean. Both review
+  conventions are now in `AGENTS.md`.
+- **Child reports were recovered from the session transcripts, not the
+  completion previews** (which truncate mid-finding): the durable copy of each
+  child's final message is
+  `~/.pi/agent/sessions/<parent>/<child-run>/run-0/session.jsonl`. All five
+  reports were extracted before any fix was applied, so no finding was acted on
+  from a truncated preview.
 
 ## Decisions
 
@@ -106,15 +151,78 @@
   this package can: a failing entropy reader is attempted **exactly once** (no
   retry loop) and the error's kind is `errs.Internal` with the reader's error
   as its cause. `doc.go` says which half lives where.
+- **A0-5.3's rationale and §4.1's clamp-id ownership corrected** (PO decision
+  2026-09-24, recorded as A0 §6 item 17). `time.Parse` does not normalize leap
+  seconds — it rejects `:60` with `second out of range`, re-verified here on Go
+  1.27 — so the clause now gives the one true hazard (`Z07:00` accepts
+  `+02:00`) and keeps the separate seconds range check for the reason that
+  survives: it names the rejection class. §4.1's naming-rulings paragraph now
+  says the two clamp ids belong to the event-chain package (WP-10), not to
+  `internal/timex`, because A0-5.4 assigns the clamp to the writer.
+- **A documented exception must be true** (timex finding 2, principal ruling).
+  `Now(nil)` still panics — the §4 sketch fixes the signature, a `time.Now`
+  fallback would violate A0-5.4's one-injected-clock rule and put an
+  unreproducible timestamp on an audit chain, and the panic is pinned by a
+  test. What was wrong is the *premise*: the doc argued no request can reach
+  `Now(nil)` because the clock is wired at the `cmd/` edge and boot would crash
+  first, which is false — `Now` takes the clock as a parameter, nothing
+  dereferences it at boot, and a half-built caller struct reaches it inside a
+  request. Reworded to the true ground (no client input can make a `Clock` nil;
+  the only route in is a half-built value, which DESIGN §4 forbids; the panic
+  is fail-loud, not error transport). A future agent reads that sentence to
+  decide whether to add a fallback, so a false premise there is a latent
+  defect even though the behaviour was right.
+- **A test fixture must not restate a registry the package deliberately does
+  not own** (caps finding 1). `mechanismTCaps` listed 15 caps as "the entries a
+  caller applies mechanism T to" while A0-7.1's Mechanism column assigns 14 of
+  them **R** — a second, wrong source of truth that the events and graph lanes
+  would have read, in the one package whose doc says no such registry exists.
+  Renamed `byteCaps` with the comment stating what it actually proves (every
+  byte cap is ≥ `len(TruncationMarker)`, so mechanism T is well-defined for it)
+  and who assigns mechanisms (A0-7.7, the owning contract).
+- **A non-vacuity gap is a finding even when the test passes** (ids finding 1,
+  caps finding 3). An import allow-list that never *requires* `crypto/rand`
+  stays green if `New` switches to a deterministic reader, and a truncation
+  corpus whose every row leaves budget ≥ 4 stays green if the rune walk-back's
+  `cut > 0` becomes `cut > 1` and returns a continuation byte. Both halves are
+  now asserted, and the two new normalization rows in `ids` carry a subtest
+  pinning that their body is exactly 26 bytes — otherwise they would die in the
+  length check and never reach the alphabet scan they exist to test.
 
 ## Open questions carried forward
 
-- (append)
+- **Next code: WP-07 `internal/cjson`** (A0-2, the high-review-bar package:
+  six vectors + V7 + the rejection list), then **WP-08 `internal/paging`**
+  (needs `ids` + `cjson`), and **WP-13 `internal/secretscan`** which is
+  parallel to both (it imports only `errs`). After those, WP-09…WP-12
+  (`events`) and WP-14…WP-16 (`graph`), then the shared contract-test suite
+  (WP-19 is A0's owner package and needs `cjson` + `paging`).
+- **`TestIDOrderingMatchesByteOrderCollateC` has no owner until WP-22.** A0
+  §4.1 registers it against A0-1.9, it is a PostgreSQL integration test
+  (`COLLATE "C"` declared on the column, opt-in per DESIGN §8), and `ids`
+  deliberately does not ship it as a skipped test. Recorded in backlog §6 as an
+  explicit `store/postgres` acceptance item so the A0-1.9 pairing is not lost.
+- **`TestCapsRejectWithSummaryTooLarge` has no owner either.** A0-7.1's own
+  "Tests:" line names it, but mechanism R is the ingest path's (A0-7.6/7.7) and
+  `caps` returns no errors. It belongs to the first caller of `caps.Fits`
+  (WP-11 `events` or WP-15 `graph`), and the one-line rejection helper belongs
+  in `caps` on the **third** use (DESIGN §2), not the first.
+- **A0-7.10's real composition rule is still A3's** (interim fail-safe frozen;
+  ~131 B per node is not a usable view) and must budget bytes for ADR-0022's
+  provenance grade.
+- **Attribute-level redaction seam** → backlog §10, unchanged.
+- **CI deferred items** → backlog §9: container image build/pin/sign (A10) and
+  full-SHA action pinning.
+- **Process, for the next session that fans out:** brief read-only reviewers
+  with their tool limits stated (no shell ⇒ the principal runs the gates; never
+  search outside the repo), and recover a child's full report from its session
+  jsonl because completion previews truncate mid-finding. Both are now
+  `AGENTS.md` conventions.
 
 ## Token usage
 
 | total input | uncached input | cache read | cache write | output | reasoning |
 |---|---|---|---|---|---|
-| 789074 | 134098 | 654976 | 0 | 10165 | 5409 |
+| 12553822 | 425950 | 12127872 | 0 | 95918 | 45652 |
 
 _(run `sessions/update-usage.sh sessions/2026-09-24-foundation-ids-timex-caps.md` at session end)_

@@ -114,3 +114,14 @@ before merge.
   rely on a `/tmp` backup, and always run capped (`ulimit -v`, `GOMEMLIMIT`,
   short `-timeout`).
 - Keep changes reviewably small; one concern per change.
+- **Delegation: brief a child for the tools it actually has.** A read-only
+  reviewer has no shell and cannot run `gofmt`/`go vet`/`go test` — say so in
+  the brief, run the gates yourself, and forbid filesystem-wide searches: on
+  2026-09-24 a reviewer spent four minutes in `find /` and was interrupted,
+  losing its whole report. A child's completion preview truncates mid-finding,
+  so recover the full text from
+  `~/.pi/agent/sessions/<parent>/<child-run>/run-0/session.jsonl` before acting
+  on it. And treat your own brief as untrusted input: that day three
+  implementers found four defects in the principal's briefs and in the frozen
+  contract (two became A0 §6 errata 16 and 17) — a child that surfaces a bad
+  instruction instead of following it silently is succeeding, not failing.
