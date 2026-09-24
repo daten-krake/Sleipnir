@@ -95,6 +95,30 @@ Package layout of the monorepo given stdlib-only + pgx exception.
   owner of the two clamp test ids. Next: **WP-07 `internal/cjson`** (A0-2, the
   high-review-bar package), then **WP-08 `internal/paging`**, with **WP-13
   `internal/secretscan`** parallel to both.
+- 2026-09-24 (second half): **WP-07 delivered and merged** (PR #5, `997bbcc`) —
+  `internal/cjson`, 4 files, 2094 lines, the §4 sketch's surface exactly and
+  nothing more. All eight A0-2.17 vectors byte-exact on canonical bytes, the
+  published `len` **and** the published SHA-256, with the angle-bracket
+  placeholders expanded to real bytes; all 21 rejection rows plus 13 extras and
+  both accept cases; 18 test ids, 163 subtests. The vector arithmetic was
+  checked three independent ways (implementer in Python before writing Go,
+  reviewer from the table alone, reviewer re-parsing the test's Go literals), so
+  the fixtures are provably the contract's and not re-derived from the code.
+  The independent review found the package holding **two notions of "the same
+  key"**: `strings.ToLower` is a weaker equivalence than the `encoding/json`
+  matching A0-2.5's own rationale cites (`{"s":1,"ſ":2}` was accepted, yet
+  `json.Unmarshal` of `{"ſ":7}` matches a field tagged `json:"s"`), and exclusion
+  matched byte-exactly while duplicates matched case-insensitively, so an
+  excluded field could influence a digest (A0-2.12). One `foldKey`
+  (orbit-minimum `unicode.SimpleFold`, ASCII lowercased first) now governs all
+  three key-identity sites; pairwise `EqualFold` was **measured and refused**
+  (quadratic, ~11 s for the ~40k keys a 1 MiB hostile document carries —
+  adversarial A14), and A0-8.1's ASCII key rule keeps every platform key on a
+  zero-allocation fast path pinned by `AllocsPerRun` rather than by timing. Two
+  more A0 errata came out of it (**§6 item 18**: when each A0-2.11 bound bites,
+  and who A0-2.14's `internal` is for — A0-8.3 settles it). Next: **WP-08
+  `internal/paging`** (A0-4 — the first package needing both `ids` and `cjson`),
+  with **WP-13 `internal/secretscan`** as the parallel option.
 - 2026-09-04 (design interview): **all session-1 decisions locked** —
   fixed stage views + capped 1-hop (no query endpoint v1); two node types
   Finding/Hypothesis; hard-reject validation; size budgets as contract
@@ -226,6 +250,14 @@ quarantine model from role matrix). Added 2026-09-04.
 - Offline capability of the Pi agent (session 4).
 - Which AD attack techniques are in/out of v1 tool registry scope
   (session with tool baseline).
+- **Who validates UTF-8 in contract string fields** (new 2026-09-24, → WP-09/
+  WP-14): `cjson.CanonicalValue` cannot enforce A0-2.3 on a Go value, because
+  `encoding/json` replaces an invalid string with U+FFFD before the canonicalizer
+  sees any bytes. A0-2.3 governs documents; field-level validation (A0-8.1) is
+  the only place left, and no package owns it yet. Related, and enforceable only
+  by review: `json.Marshal(float64(2))` emits `2`, byte-identical to an integer,
+  so A0-2.6's "no float field in a canonicalized type" needs a merge-gate line
+  when the domain types land.
 - **Where attribute-level redaction lives** (new 2026-09-21, → §10): DESIGN §1
   gives `logging` zero internal imports, so it cannot call `errs`' redaction
   helpers. WP-01's ruling: `errs` owns redaction of error strings (`errs.Secret`
