@@ -462,7 +462,13 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   additionally range-checked `00`–`59` (this is what forces `Z`, exactly three
   digits, and rejects `:60`); (2) `time.Parse(TimeLayout, s)` for calendar
   validity; (3) the year window `[MinYear, MaxYear)`. `time.Parse` alone MUST NOT
-  be used: `Z07:00` accepts numeric offsets and Go normalizes leap seconds. A
+  be used: its `Z07:00` zone pattern accepts a numeric offset, so
+  `2026-09-07T14:03:22.481+02:00` parses cleanly and violates A0-5.1/A0-5.5.
+  Check (1)'s separate seconds range check stays required even though
+  `time.Parse` also rejects `:60` (with `second out of range`): it names the
+  rejection class instead of surfacing an opaque stdlib error. _Erratum
+  2026-09-24, §6 item 17: this sentence previously gave "Go normalizes leap
+  seconds" as a second reason — it does not, `time.Parse` rejects them._ A
   parsed value MUST round-trip: `FormatTime(ParseTime(s)) == s` byte-exactly,
   else `validation`. `time.RFC3339Nano` MUST NOT be used — it drops trailing
   zeros.
@@ -1029,6 +1035,12 @@ asserts their canonical bytes, lengths and digests byte-exactly.
 Naming rulings carried by this table: `TestExactFullPageHasNoNextCursor` is the
 same test as `TestHasMoreDetection` and is **not** a second id; the round-trip
 check of A0-5.3 is a subtest of `TestParseTimeRejects`, not `TestTimeParse…`.
+The two A0-5.4 clamp ids (`TestRecordedAtClampIsMonotone`,
+`TestRecordedAtClampBypassRejected`) sit on the A0-5.4 row because that is the
+clause stating the rule, but A0-5.4 assigns the clamp to *the writer*, so they
+belong to the event-chain package that stamps `recorded_at` (WP-10) and not to
+`internal/timex` — whose §4 sketch has no clamp surface (_erratum 2026-09-24,
+§6 item 17_).
 `TestCursorWithInconsistentKAndIDRejected` has exactly one oracle across A0, A1
 and A2: `validation` (400), never "empty page or `validation`" (A0-4.4, A0-4.8).
 The positive counterparts of the canonicalization rules are the A0-2.17 accept
@@ -1121,3 +1133,16 @@ decision.
     (A0-7.2 governs the constants, not this prose); `caps.Truncate` derives
     every boundary from `len(TruncationMarker)` so a future literal change by
     ADR cannot leave a hardcoded number behind.
+17. **A0-5.3 / §4.1 — ERRATUM (product owner decision 2026-09-24, no
+    normative change).** Two inaccuracies found by the WP-05 implementer
+    writing `internal/timex`, both verified against Go 1.27 by the principal.
+    (a) A0-5.3's rationale for forbidding `time.Parse` alone claimed Go
+    normalizes leap seconds; `time.Parse` rejects `:60` with `second out of
+    range`. The real and only hazard is `Z07:00` accepting a numeric offset,
+    which the clause now says, and the separate seconds range check of (1)
+    stays mandatory because it names the rejection class. (b) §4.1 lists the
+    two A0-5.4 clamp test ids without naming their package, so a
+    registry-only reader expects them in `internal/timex`; A0-5.4 assigns the
+    clamp to the writer, and §4.1's naming-rulings paragraph now says the ids
+    belong to the event-chain package (WP-10). No MUST, MUST NOT, constant or
+    test vector changed in either case, so both are errata and need no ADR.
