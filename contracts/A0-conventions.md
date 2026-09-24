@@ -189,8 +189,13 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   either exceeded → `validation`. Depth counts container boundaries — the
   top-level object is level 1, each nested object or array adds 1, scalars are
   not levels; a document at depth 32 MUST be accepted, at 33 rejected
-  (`validation`); size is `len(doc)` of the input; both are checked before
-  canonicalization. This walk is AGENTS.md high-review untrusted-input parsing.
+  (`validation`); size is `len(doc)` of the raw input and is checked before
+  decoding, so nothing proportional to an over-size document is allocated;
+  depth cannot be known without parsing, so it is enforced at each container
+  boundary during the walk, and **no canonical bytes are returned when any
+  check fails** (_erratum 2026-09-24, §6 item 18: this sentence previously said
+  both bounds are checked before canonicalization_). This walk is AGENTS.md
+  high-review untrusted-input parsing.
   _Untrusted-input bound (`AGENTS.md`
   high-review list); contract types nest ≤ 6 — **Decided** (product owner,
   2026-09-21, PR #2 §6.6)._
@@ -214,7 +219,11 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   `cjson.CanonicalValue`); `json.Marshal` emits `null` for a nil
   slice/map/pointer, which changes every digest. **`cjson.Canonical` and
   `cjson.CanonicalValue` MUST reject a `null` at any depth with `validation`.**
-  A canonical document containing `null` is a platform defect → `internal`.
+  A canonical document containing `null` is a platform defect → `internal`
+  (that is a **consumer** finding `null` inside canonical bytes the platform
+  already stored, A0-8.3; the writer's rejection of a `null` in input is
+  `validation`, as this clause's MUST and A0-2.17's rejection list require —
+  _erratum 2026-09-24, §6 item 18_).
   _Producer and verifier must agree byte-for-byte or ADR-0018 §2 re-validation
   aborts every action._
   Tests: TestNilCollectionNeverSerializesAsNull, TestRejections.
@@ -1146,3 +1155,18 @@ decision.
     clamp to the writer, and §4.1's naming-rulings paragraph now says the ids
     belong to the event-chain package (WP-10). No MUST, MUST NOT, constant or
     test vector changed in either case, so both are errata and need no ADR.
+18. **A0-2.11 / A0-2.14 — ERRATUM (product owner decision 2026-09-24, no
+    normative change).** Two wordings surfaced by WP-07 `internal/cjson` and
+    its independent review. (a) A0-2.11 said the depth and size bounds are
+    "both checked before canonicalization": size can be (it is `len(doc)` of
+    the raw bytes, checked before decoding) but depth cannot be known without
+    parsing, so the clause now says depth is enforced at each container
+    boundary during the walk and that no canonical bytes are returned when any
+    check fails — the property the sentence was reaching for, and the one a
+    single-pass canonicalizer can actually guarantee. (b) A0-2.14's closing
+    "platform defect → `internal`" competed on its face with the same clause's
+    MUST and with A0-2.17's rejection list, which both require `validation`;
+    A0-8.3 already settles it, so the sentence now names its subject — a
+    consumer finding `null` inside canonical bytes the platform already stored.
+    No MUST, MUST NOT, bound value or published vector changed in either case,
+    so both are errata and need no ADR.

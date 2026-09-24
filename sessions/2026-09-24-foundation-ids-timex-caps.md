@@ -130,6 +130,21 @@ OPEN with 16 files at session close. **CI green on the PR** (run `36038464860`,
   reports were extracted before any fix was applied, so no finding was acted on
   from a truncated preview.
 
+- **A0 §6 item 18 — two more errata, ruled here but found by WP-07**
+  (`internal/cjson`, branch `foundation/cjson`, tracked in
+  `sessions/2026-09-24-cjson.md`). They land in this PR because this branch
+  already owns A0 §6 items 16 and 17; putting them on the cjson branch would
+  have guaranteed a §6 merge conflict between the two PRs. (a) A0-2.11 said the
+  depth and size bounds are "both checked before canonicalization" — size can
+  be, depth cannot be known without parsing, so the clause now says depth is
+  enforced at each container boundary and that no canonical bytes are returned
+  when any check fails. (b) A0-2.14's closing "platform defect → `internal`"
+  competed with the same clause's MUST and with A0-2.17's rejection list, which
+  both require `validation`; A0-8.3 already settles it, so the sentence now
+  names its subject — a consumer finding `null` inside stored canonical bytes.
+  Neither changes a MUST, a MUST NOT, a bound value or a published vector;
+  `verify-vectors.py` still reports PASS 52 / FAIL 0 after both.
+
 ## Decisions
 
 - **The `[truncated]` literal governs; A0-7.5's "12 B" was an arithmetic
