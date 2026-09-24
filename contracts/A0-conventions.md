@@ -619,7 +619,9 @@ Both rules, side by side — neither generalizes to the other:
   invalid UTF-8 and breaks A0-2.3.
 - **A0-7.5** **Mechanism T — truncate + marker.** The platform shortens the
   value so that `len(prefix) + len("[truncated]") ≤ cap`, appends the literal
-  ASCII marker `[truncated]` (12 B, counted against the cap), and sets the
+  ASCII marker `[truncated]` (11 B, counted against the cap — erratum
+  2026-09-24, §6 item 16: this parenthetical said 12 B, contradicting the
+  literal it names; the literal governs), and sets the
   sibling boolean field `<field>_truncated` to `true`. A cap smaller than
   `len(TruncationMarker)` is a platform defect: `caps.Truncate` returns
   `("", true)` (§4) and the caller surfaces `internal` (A0-3.1) — an empty
@@ -981,7 +983,7 @@ const (
 	MaxSupersedeChain       = 64 // A2-4.4/4.5: bound on one history walk
 )
 
-const TruncationMarker = "[truncated]" // A0-7.5, 12 B, counted against the cap
+const TruncationMarker = "[truncated]" // A0-7.5, 11 B, counted against the cap
 
 // Truncate applies mechanism T: rune-boundary cut + marker (A0-7.4/7.5).
 // Reports whether anything was cut, for the sibling <field>_truncated bool.
@@ -1110,3 +1112,12 @@ decision.
     contracts. Every user-composed A1 kind (`actor.principal_id`, A1-2.2) and
     every A2 operator write (`user_id`, A2-5.3) validates against it. The prefix
     spelling is confirmed and is additive-only from here (A0-1.10).
+16. **A0-7.5 — ERRATUM (product owner decision 2026-09-24, no value change).**
+    The clause called the truncation marker "12 B" while naming the literal
+    `[truncated]`, which is 11 bytes; the §4 sketch comment repeated it. Found
+    by the WP-06 implementer writing `internal/caps`. The **literal is
+    normative** and both parentheticals now read 11 B. No cap value, mechanism
+    or test vector changes, so this is an erratum and needs no ADR
+    (A0-7.2 governs the constants, not this prose); `caps.Truncate` derives
+    every boundary from `len(TruncationMarker)` so a future literal change by
+    ADR cannot leave a hardcoded number behind.
