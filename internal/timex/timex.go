@@ -49,10 +49,12 @@ type Clock interface {
 // A nil Clock is a wiring defect — the dependency was never injected — and is
 // left to panic rather than be papered over with a time.Now fallback: a
 // timestamp taken from an uninjectable clock cannot be reproduced by a test or
-// a replay, which on an audit chain is worse than the crash. ADR-0019 §6's
-// no-panic rule covers conditions a live request can provoke; a nil Clock
-// cannot, because the clock is wired once at the cmd/ edge (DESIGN §7) and the
-// boot path would crash before serving. See TestInjectedClock/nil_clock.
+// a replay, which on an audit chain is worse than the crash. This is not the
+// request-path panic ADR-0019 §6 forbids: no client input can make a Clock
+// nil, the value arrives through a constructor, and a nil one means a caller
+// struct was handed out half-built, which DESIGN §4 forbids outright. The
+// panic is a deliberate fail-loud at that defect, not error transport, and the
+// fallback it refuses to install is what TestInjectedClock/nil_clock pins.
 func Now(c Clock) time.Time {
 	return c.Now().UTC().Truncate(time.Millisecond)
 }
@@ -67,6 +69,13 @@ func Now(c Clock) time.Time {
 // (it truncates; it does not round, so 14:03:59.999999999 cannot carry into
 // the next minute); the output stays A0-5.1-shaped either way. Test
 // FormatTimeAlwaysThreeDigits pins that behaviour.
+//
+// No year window is applied here: [MinYear, MaxYear) is A0-5.3's parsing
+// bound, not a rendering rule, and adding one would change the §4 sketch's
+// signature. A host clock outside that window — or outside the years
+// 1000-9999, where Go emits a five-character year — renders a string
+// ParseTime then rejects; that asymmetry is a deployment fault rather than a
+// formatting one, and A0-5.6 keeps platform-recorded time authoritative.
 func FormatTime(t time.Time) string {
 	return t.UTC().Format(TimeLayout)
 }
@@ -105,6 +114,11 @@ func ParseTime(s string) (time.Time, error) {
 	}
 	t, err := time.Parse(TimeLayout, s)
 	if err != nil {
+		// %v of a *time.ParseError re-embeds the raw value unquoted, so this
+		// branch relies on check 1 having already restricted s to [0-9T:.Z-]
+		// for its injection safety. Reordering the checks would silently
+		// remove that guard; no test can cover it, because no hostile byte
+		// reaches this line.
 		return time.Time{}, errs.Newf(errs.Validation,
 			"parse timestamp: value %q: calendar fields are not a valid date or time: %v", s, err)
 	}

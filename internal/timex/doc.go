@@ -22,7 +22,7 @@
 //     calendar validity, the [MinYear, MaxYear) window, then the byte-exact
 //     round-trip), each rejection an errs.Validation. time.Parse alone and
 //     time.RFC3339Nano are both deliberately not used as the parser.
-//   - A0-5.4, first half — Clock and Now: the one injected clock, UTC,
+//   - A0-5.4's clock half — Clock and Now: the one injected clock, UTC,
 //     millisecond-truncated, monotonic reading stripped by Truncate before a
 //     value is stored, hashed or serialized.
 //
@@ -37,6 +37,12 @@
 //     MUST NOT import (A0 §4 preamble, DESIGN §1). There is no Clamp helper and
 //     no clamp constant here because the consumer does not exist yet —
 //     DESIGN §2 forbids code for a hypothetical caller.
+//   - A0-5.4's third sentence: durations may be measured with the monotonic
+//     clock but are serialized as integer *_ms fields (A0-8.2), never as
+//     timestamps and never as Go duration strings. This package has no
+//     duration surface and gets none (DESIGN §2); the encoding belongs to
+//     whatever serializes the field, and cjson's integers-only rule (A0-2.6)
+//     is what makes it enforceable at the canonical-form boundary.
 //   - A0-5.5's UI rule (render the zone explicitly) is an obligation on the
 //     rendering layer. What this package does for it is the format half: no
 //     output ever carries an offset, because FormatTime converts to UTC first.
@@ -61,8 +67,12 @@
 //     behaviour is pinned by a subtest of TestFormatTimeAlwaysThreeDigits
 //     instead of being reimplemented.
 //   - A nil Clock passed to Now is a caller bug and is left to panic
-//     naturally; see the doc comment on Now for the ADR-0019 §6 reasoning, and
-//     TestInjectedClock/nil_clock, which asserts the panic rather than
+//     naturally rather than fall back to time.Now. No client input can make a
+//     Clock nil, so this is not the request-path panic ADR-0019 §6 forbids:
+//     the only route in is a half-built caller struct, which DESIGN §4
+//     forbids, and a silent substitution of the real clock would put an
+//     unreproducible timestamp on an audit chain. See the doc comment on Now
+//     and TestInjectedClock/nil_clock, which asserts the panic rather than
 //     installing a fallback.
 //   - A rejection message echoes the rejected value with %q (A0-3.4 permits
 //     echoing untrusted request material that no secret-pattern rule rejects,

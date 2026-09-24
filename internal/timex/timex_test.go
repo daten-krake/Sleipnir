@@ -244,6 +244,9 @@ func TestNowStripsMonotonic(t *testing.T) {
 	injected := realtimeClock{}.Now()
 	got := Now(&fixedClock{at: injected})
 
+	// Struct inequality, not .Equal: Round(0) strips the monotonic reading and
+	// .Equal compares instants, so .Equal would pass whether or not the
+	// reading survived. != is the only non-vacuous form of this check (A0-5.4).
 	if got.Round(0) != got {
 		t.Errorf("Now kept a monotonic reading: round-trip %v differs from %v (A0-5.4)", got.Round(0), got)
 	}
