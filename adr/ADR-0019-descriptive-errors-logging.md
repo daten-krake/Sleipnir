@@ -1,6 +1,8 @@
 # ADR-0019: Descriptive errors and granular logging (agent-debuggable by design)
 
-- **Status:** Accepted
+- **Status:** Accepted (2026-09-03). The *spelling* of §3's correlation
+  attributes carries the amendment note below (product owner, 2026-09-24); the
+  decision itself is unchanged, so this ADR is not superseded.
 - **Date:** 2026-09-03
 - **Deciders:** Product owner, architect
 
@@ -34,6 +36,21 @@ every error carries the function it originated in.
    - Subsystem loggers (`platform.policy`, `broker`, `api`, `notify`, ...).
    - Every error-level record includes: function/op, error chain, and
      correlation attributes (`engagement`, `run`, `job`, `node`).
+
+     > **Amendment (product owner, 2026-09-24) — spelling only, decision
+     > unchanged.** Frozen contract clause **A0-3.6**
+     > (`contracts/A0-conventions.md`) governs the attribute names:
+     > `engagement_id`, `run_id`, `job_id`, `node_id`, plus `graph_node_id` for
+     > a graph node. `node_id` always means the **remote agent node**
+     > (`slp_node_`, Q9); a graph node is always `graph_node_id` (`gn_`), and
+     > the two MUST NOT be conflated. The list above predates ADR-0016's graph
+     > vocabulary, so its bare `node` reads as `node_id` and its bare
+     > `engagement`/`run`/`job` as the `_id` spellings. This is a clarification
+     > of an Accepted ADR by a frozen contract, not a new decision, so it needs
+     > no ADR of its own (`adr/README.md`: ADRs are immutable once Accepted —
+     > the note is the record). Binding restatement for builders:
+     > `AGENTS.md` → "Error and logging conventions"; implemented by
+     > `internal/logging` (WP-01.2) and `internal/errs.Attrs`.
    - **Log-or-return, never both:** an error is logged once, at the point
      where it is handled/decided; intermediate layers only wrap and return.
 4. **Granularity:** failures of external calls (LLM endpoint, Docker
