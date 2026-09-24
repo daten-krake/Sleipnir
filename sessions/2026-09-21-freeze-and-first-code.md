@@ -301,12 +301,35 @@ product owner decision recorded in a session tracker**).
 
 ## Open questions carried forward
 
-- (append)
+_Retro-filled 2026-09-24: the OOM kill ended this session before the close
+ritual ran, so this section was still the template placeholder and the usage
+table was zeros. The table above is now computed from this session's log (it
+ends at the kill, so it is a lower bound), and the carried items are
+transcribed from §Done and §Decisions._
+
+- **Does ADR-0019 need an amendment note for A0-3.6's attribute spelling?**
+  → **Answered 2026-09-24:** yes, a spelling-only note inside the Accepted ADR,
+  decision text unchanged, no new ADR (`adr/ADR-0019-descriptive-errors-logging.md`).
+- **The three WP-01 implementers' deviation logs are unrecoverable**
+  (`/tmp/wp01/*-log.md` did not survive the reboot). The rulings they recorded
+  are transcribed in §Decisions above, which is now the only durable record.
+  Consequence for later sessions: a child's deviation notes must land in the
+  repo (a package doc comment or the tracker), never only in `/tmp`.
+- **Attribute-level redaction seam** — `logging` has zero internal imports, so
+  it cannot call `errs`' redaction helpers; enforced *inside* `logging` would
+  need a DESIGN §1 amendment or a third foundation package → backlog §10.
+- **CI deferred items:** container image build/pin/sign (adversarial A10) and
+  full-SHA action pinning → backlog §9.
+- **`next_steps.md` was never rewritten** for the following session; it still
+  described the post-2026-09-11 state → corrected 2026-09-24.
+- **Remaining A0 foundation packages:** `ids`, `timex`, `caps`, then `cjson`
+  (high review bar) and `paging`, then the shared contract-test suite →
+  started 2026-09-24 as WP-04/05/06.
 
 ## Token usage
 
 | total input | uncached input | cache read | cache write | output | reasoning |
 |---|---|---|---|---|---|
-| 0 | 0 | 0 | 0 | 0 | 0 |
+| 16530624 | 313280 | 16217344 | 0 | 137850 | 67622 |
 
 _(run `sessions/update-usage.sh sessions/2026-09-21-freeze-and-first-code.md` at session end)_
