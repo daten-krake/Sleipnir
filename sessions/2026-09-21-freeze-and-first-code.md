@@ -119,8 +119,103 @@ product owner decision recorded in a session tracker**).
   U+2028/9/7F in table rows, 42 `Kind` constants, and `chain_head_anchor` proven
   *not* to have leaked into the `Kind` block.
 
+### PR #2 merged, WP-01 delegated
+
+- **PR #2 MERGED** 2026-09-21T08:33:33Z (merge commit `7ad14e2`, 18 files).
+  A0/A1/A2 are `Frozen` **on `main`**, ADR-0021 and ADR-0022 are Accepted. Local
+  `main` fast-forwarded; `contracts/a0-a2-conventions` deleted locally and on the
+  remote. This is what unblocks code (`contracts/README.md`: no code against a
+  `Draft`).
+- Review note posted on the PR before the merge, recording how each tick was
+  read and what the three explicit answers changed. The PO's body text was left
+  untouched.
+- **WP-01 cut as three super-minimal packages** (WORKFLOW §5) and delegated to
+  `sleipnir-implementer`, one directory each: **WP-01.1** `internal/errs`
+  (verify the draft, write `redact.go` + 18 named test ids) · **WP-01.2**
+  `internal/logging` (3 files, 11 test ids including two that mechanically prove
+  the DESIGN §1 zero-internal-imports boundary) · **WP-01.3**
+  `.github/workflows/ci.yml`.
+
+### WP-01 review pass, and the OOM that ended the session
+
+- The three implementers reviewed **my** drafts and found real defects — which
+  is what WORKFLOW §5's independent check is for. Two of them (the `slog`
+  JSON-handler/`fmt`-verb redaction rule and the nil-logger fallback) are
+  binding conventions, so they were promoted into `AGENTS.md` rather than left
+  in a package comment.
+- Review fixes were dispatched at 09:25:13Z as three one-writer-per-directory
+  lanes: `fix-errs` (bound the `Error()` walk), `fix-logging`, `fix-ci`
+  (dependency-allowlist findings). They did not complete.
+- **Incident: the session was lost to a kernel OOM kill, not to an agent
+  error.** At 11:36:58 CEST the `fix-errs` implementer, proving that
+  `TestErrorChainWalkIsBounded` can fail, short-circuited the guard to
+  `if false && depth == maxChainDepth { // BYPASS PROOF` in the working tree,
+  backed the original up to `/tmp/errs.go.bak`, and ran the test. With the cap
+  gone the cyclic-chain cases appended to a `strings.Builder` without bound:
+  `errs.test` reached **11.4 GB anon-rss / 21 GB total-vm** on an 11 GiB WSL2
+  VM, `all_unreclaimable? yes`, and the kernel killed it. The VM went down at
+  11:37:54 (`init.scope: Stopping timed out. Killing.`) and both in-flight
+  children took SIGTERM (`exit=143`). Reboot 11:40:48.
+- **Recovery (this commit).** `/tmp` did not survive the reboot, so the backup
+  was gone and the disabled guard was still in the tree — one `go test
+  ./internal/errs/` away from repeating the crash. The cap is restored, no
+  other mutation marker survives a repo-wide grep, and the gates were re-run
+  under a hard cap (`ulimit -v 3G`, `GOMEMLIMIT=1GiB`, `-timeout 120s`):
+  `gofmt -l`, `go vet ./...`, `go build ./...`, `go test ./...` all green
+  (`errs` 0.006s, `logging` 0.005s).
+- **Recovery audit corrected the first assessment: no code was lost.** Every
+  finding's change had landed before the kill — E-a's cap and
+  `TestErrorChainWalkIsBounded` (with the §8 goroutine-plus-`select` helper, the
+  32/33 boundary rows, and the envelope and `slog` conversions pinned too),
+  L-d's `slog.Default()` fallback and its test, and all of C-c/C-d/C-e/C-f plus
+  the C-a/b allowlist sentence. Both lanes died during *verification*, not
+  implementation. What `/tmp` took was the implementers' logs
+  (`/tmp/wp01/*-log.md`) and their fixtures — the evidence, not the changes.
+- One consequence was worse than lost evidence: `ci.yml` already carried the
+  comment "both claims re-verified against corrupted copies under `/tmp`",
+  written by a lane that was killed while building exactly those copies. An
+  unexecuted verification asserted as done is a defect in its own right.
+- **Verification re-run for all three findings, entirely against copies outside
+  the repo** (`/tmp/prove-errs`, `/tmp/prove-ci`, real files never touched):
+  - *E-a, the proof that killed the box.* Cap intact: `ok` in 0.002s. Cap
+    short-circuited to `if false && depth == maxChainDepth`: `runtime: out of
+    memory` → `fatal error` → FAIL, contained to **139 MB peak RSS in 0.32s**
+    under `ulimit -v 2G` — against the 11.4 GB that took the VM down. The test
+    is therefore not vacuous, and the bound is what makes it safe to run.
+  - *C-f.* Untouched contract: `PASS 52 / FAIL 0`, exit 0. Tampering the
+    published digest, the published length, or the preimage each yields
+    `PASS 51 / FAIL 1`, exit 1 — precisely what the comment claims, so the
+    comment is now true rather than merely asserted. The vacuous shape
+    (`PASS 0 / FAIL 0`, exit 0) is caught **only** by the summary grep, which
+    confirms assertion 2 is load-bearing and not redundant with the exit code.
+  - *C-e.* Eight offender fixtures (`deploy.pem`, nested `config/id_rsa`,
+    `signing.key`, `gh.token`, `docs/notes.md~`, `ci.yml.orig`, `patch.rej`)
+    each fail the step; a clean tree and four near-miss names (`pemfile.md`,
+    `apikey.go`, `keyboard.svg`, `tokenising.md`) pass, so the pattern does not
+    false-positive on ordinary files; the real repo passes.
+- Still owed, and not recoverable: the three implementers' own log files, i.e.
+  their deviation notes. The rulings those notes recorded are transcribed into
+  §Decisions below so the tracker is the durable record.
+- Rule added to `AGENTS.md`: a negative test is proved by asserting the
+  bound's *effect*, never by removing the bound and executing the path.
+
 ### Process
 
+- **Product-owner catch (2026-09-21): the principal drifted into implementer
+  work.** After the merge I began typing `internal/errs` myself — four files,
+  ~355 lines — instead of decomposing and delegating per WORKFLOW §5. Two
+  defects, not one: the principal was doing an implementer's job, **and** the
+  package I had briefed bundled four concerns (scaffold + `errs` + `logging` +
+  CI), which is exactly what "super-minimal" forbids. Corrected by splitting
+  WP-01 into three one-concern packages with disjoint directories.
+- The drafted files were **not** laundered into done work: they are handed to
+  the implementer explicitly labelled "a principal's draft, not accepted work",
+  with instructions to verify every line against A0-3/ADR-0019 and fix or
+  rewrite what is wrong, and to report defects as a success. This keeps the two
+  architectural rulings I made (`New(kind, msg)`; `OpOf` existing so `logging`
+  needs no internal import) under independent check instead of self-approved.
+  Baseline before handover: `gofmt -l`, `go vet ./...`, `go build ./...` all
+  clean, so any breakage is attributable.
 - Session ritual completed: SPEC → `adr/` (README + ADR-0021, the only
   Proposed; other 20 Accepted) → DESIGN → BACKLOG → AGENTS/WORKFLOW.
 - Housekeeping: tree clean, branch in sync with origin, local `main` ==
@@ -155,13 +250,47 @@ product owner decision recorded in a session tracker**).
   `errs.New(msg)` but also requires kinds "attached at creation", and a kind
   parameter is the only way both hold. `Wrap`/`Wrapf` keep the ADR's signature
   and **inherit** the cause's kind, so wrapping can never silently reclassify an
-  error. Recorded in WP-01's brief and to be recorded in the package doc comment.
+  error. Recorded in WP-01's brief and now in the package doc comment
+  (`internal/errs/errs.go`), so the ruling outlives the brief.
+- **`Error()` bounds its cause-chain walk at 32 layers** (principal overrules
+  the implementer, finding E-a). The implementer judged a depth cap speculative
+  under DESIGN §2's simplicity rule, and noted correctly that the exported
+  `Error` fields make a hand-built cycle (`e.Err = e`) reachable. Overruled:
+  `Error()` sits on every log record and every `/api/v1` envelope, so an
+  unbounded walk is an availability hazard (adversarial A14) and a documented
+  hazard is not a hypothetical one — guarding it is defensive, not speculative.
+  The cap reuses A0-2.11 `MaxDepth` (32) so one constant means the same thing
+  everywhere it bounds an untrusted structure, and hitting it appends a segment
+  naming the truncation rather than ending silently, keeping the rendered string
+  diagnosable. `truncationNotice()` derives its number from the same constant,
+  so the message can never disagree with the cap applied.
+- **A nil logger falls back to `slog.Default()` — neither panic nor drop**
+  (principal rules a third way, finding L-d). The implementer made
+  `ErrorRecord` panic on a nil logger so the record could not be silently
+  dropped. Both horns are wrong: panicking violates ADR-0019 §6 (panics are for
+  programmer-invariant violations at startup, never error transport on a live
+  path, and a nil logger reaches `ErrorRecord` from request handlers), while
+  dropping the record breaks the audit premise the platform exists on. The
+  stdlib guarantees `slog.Default()` is never nil, so the record is always
+  written and surfaces on the default handler's output — which is how the wiring
+  defect becomes visible. A safety net, not a supported way to obtain a logger.
 - **CI rides in WP-01's PR**, not its own: it is the PR that first needs it, and
   the workflow's Go steps are guarded by `hashFiles('go.mod')` so doc-only and
   contract-only branches stay green. It gates the five WORKFLOW §4 commands, an
   **ADR-0010 dependency check that fails closed** on any non-pgx require, the
   contract-vector recomputation for PRs touching `contracts/`, and the I-02
   U+2028/9 check.
+- **Attribute spelling: A0-3.6 beats ADR-0019 §3** (ruled for WP-01.2, to be
+  ratified). ADR-0019 §3 names the correlation attributes `engagement`, `run`,
+  `job`, `node`; frozen A0-3.6 rules `engagement_id`, `run_id`, `job_id`,
+  `node_id` and says why — `node_id` is the *remote agent node* (`slp_node_`)
+  while a graph node is `graph_node_id` (`gn_`), and the two MUST NOT be
+  conflated. A0-3.6 already notes that ADR-0019 §3's "node" predates ADR-0016's
+  graph vocabulary. Treated as a **naming clarification of an Accepted ADR by a
+  frozen contract**, not a new decision, so no new ADR; the deviation is recorded
+  in the `logging` package doc comment. **Open for the product owner:** whether
+  ADR-0019 should carry an amendment note, since ADRs are immutable once
+  Accepted and the literal reading still says `node`.
 - **Brief defect found by a child, ruling issued mid-flight:** my brief's C.5
   tense fix re-inserted the literal token `**PO confirm**` that J.1 forbids. The
   A2 writer surfaced it instead of silently picking a side; its resolution is

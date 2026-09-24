@@ -1,0 +1,374 @@
+# CI — the WORKFLOW.md §4 merge gate, enforced mechanically.
+#
+# Why this file exists now: product owner decision 2026-09-21
+# (sessions/BACKLOG.md §9) — CI lands *before* the first code package. Before
+# it, the §4 gate was a review checkbox no branch could fail.
+#
+# What is enforced here, one named step per rule, each step citing its source
+# so a red check explains itself to a reader who only sees the CI log:
+#
+#   WORKFLOW.md §4      gofmt -l empty · go vet ./... · go build ./... ·
+#                       go test ./... · go.mod holds only the ADR-0010
+#                       exception list, vendor/ consistent, `go mod verify`.
+#   ADR-0010 §2         pgx (+ the modules pgx itself requires) is the only
+#                       permitted non-stdlib dependency. Judged from the
+#                       packages the build actually imports, not from go.mod
+#                       text, so an indirect dependency or a `replace` that
+#                       swaps in a fork cannot slip through.
+#   contracts/README    The vectors published in A0/A1/A2 are normative: a
+#                       branch carrying docs/reviews/*-verify-vectors.py must
+#                       re-prove them with a clean summary line.
+#   I-02                sessions/2026-09-11-contract-freeze-a1.md: raw
+#                       U+2028/U+2029/U+007F inside a Markdown table row made a
+#                       normative vector's line count reader-dependent; they
+#                       stay banned in contract table rows.
+#   WORKFLOW §7 +       the GitHub token (and every other credential) is never
+#   ADR-0019 §5         written to a file, committed, or logged, and secret
+#                       material never enters the repo at all. Checked by name
+#                       only — file contents are not read here.
+#   DESIGN §6/§8        data races: the platform is concurrent by construction,
+#                       so `go test -race` gets its own step and its own red X.
+#
+# Deliberately absent (DESIGN §2 — every job needs a reason to exist): no image
+# build/pin/sign — that is adversarial finding A10 and stays a backlog item; no
+# deploy; no matrix; no dependency caching (the build is vendored, so the module
+# cache is never the source of truth); no write permissions beyond `contents:
+# read`; no secret-scanning *service* and no content-level scan — the hygiene
+# step is a name-pattern gate on tracked paths, and a real scanner needs its own
+# backlog item and ADR.
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # Guard job. WORKFLOW §4's gates only mean something when there is a Go
+  # module, and most branches in this repo are Markdown (contracts, ADRs,
+  # sessions) — they must come out green, not red. Job-level `if` cannot call
+  # hashFiles(): GitHub evaluates it before any runner exists, so nothing is
+  # checked out yet and the hash would always be empty — which silently skips
+  # the gates forever. hashFiles is legal in a *step* `if`, so it runs here,
+  # after checkout, and publishes plain-text outputs the real jobs gate on.
+  detect:
+    name: detect what this branch contains (guards the §4 gates)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      go: ${{ steps.go-mod.outputs.present }}
+      vectors: ${{ steps.verify-vectors.outputs.present }}
+    steps:
+      # Action versions in this file are pinned to the publisher's *major tag*,
+      # not to a full commit SHA. That is the known supply-chain gap: a tag can
+      # be moved by whoever owns it. Full-SHA pinning is deferred to the
+      # adversarial-A10 pin-and-sign backlog item, which decides the pinning
+      # mechanism for actions and images in one place rather than letting CI
+      # invent half of it. Every `uses:` below follows this one ruling.
+      - name: check out the branch (hashFiles only sees the workspace)
+        uses: actions/checkout@v4
+
+      - name: go.mod present (WORKFLOW §4 precondition)
+        id: go-mod
+        if: hashFiles('go.mod') != ''
+        run: echo 'present=true' >> "$GITHUB_OUTPUT"
+
+      - name: contract vector verifier present (A0/A1/A2 are normative)
+        id: verify-vectors
+        if: hashFiles('docs/reviews/*-verify-vectors.py') != ''
+        run: echo 'present=true' >> "$GITHUB_OUTPUT"
+
+  go-gates:
+    name: WORKFLOW §4 — gofmt / vet / build / test / ADR-0010 deps
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: detect
+    if: needs.detect.outputs.go == 'true'
+    steps:
+      - name: check out the branch
+        uses: actions/checkout@v4  # major tag: see the A10 note in the detect job
+
+      # DESIGN §1: one module, pinned to the Go release named in go.mod. The
+      # toolchain comes from go.mod rather than a floating version tag so CI
+      # and `go generate`-era contributors cannot drift apart.
+      - name: install the Go toolchain pinned by go.mod (DESIGN §1)
+        uses: actions/setup-go@v5  # major tag: see the A10 note in the detect job
+        with:
+          go-version-file: go.mod
+          cache: false # vendored build: the module cache is not the source of truth
+
+      - name: gofmt -l must be empty (WORKFLOW §4)
+        run: |
+          set -euo pipefail
+          # Only first-party code: vendor/ holds third-party sources that are
+          # formatted by whoever wrote them (ADR-0010 §2b).
+          out=$(git ls-files -z -- '*.go' ':(exclude)vendor' | xargs -0 -r gofmt -l)
+          if [ -n "$out" ]; then
+            echo "gofmt -l must be empty; run 'gofmt -w' over:"
+            printf '%s\n' "$out"
+            exit 1
+          fi
+
+      - name: go vet ./... (WORKFLOW §4)
+        run: |
+          set -euo pipefail
+          go vet ./...
+
+      - name: go build ./... (WORKFLOW §4)
+        run: |
+          set -euo pipefail
+          go build ./...
+
+      - name: go test ./... (WORKFLOW §4; hermetic per DESIGN §8)
+        run: |
+          set -euo pipefail
+          go test ./...
+
+      # Its own step, deliberately: `go test -race` is not in WORKFLOW §4, but
+      # the platform is concurrent by construction (spawn broker, SSE streams,
+      # agent loops) and DESIGN §6/§8 make leaked goroutines and unsynchronised
+      # shared state review blockers. A race must therefore be attributable on
+      # its own check line, not buried inside §4's test step — and must not be
+      # dropped just because someone re-reads §4 literally. It runs after the
+      # plain test step so an ordinary failure is reported first and cheaply.
+      - name: go test -race ./... (DESIGN §6/§8, shared-state review blockers)
+        run: |
+          set -euo pipefail
+          go test -race ./...
+
+      - name: only ADR-0010 dependencies are imported or required (ADR-0010 §2, WORKFLOW §4)
+        run: |
+          set -euo pipefail
+          # Two independent views, both required to be clean:
+          #   * the packages the build actually imports (go list -deps) — the
+          #     truth about dependencies, because go.mod text understates it
+          #     once something is indirect, replaced, or pulled in transitively;
+          #   * the module graph (go mod edit -json) — because an unused
+          #     require is still vendored code nobody reviewed, and a replace
+          #     can hide a fork behind an approved import path.
+          # `go mod edit -print` keeps block form, so the JSON is parsed rather
+          # than grepped; python3 here is the interpreter ubuntu-latest already
+          # ships, stdlib json only (no new dependency, no install step).
+          export ALLOWED='github.com/jackc/pgx github.com/jackc/pgpassfile github.com/jackc/pgservicefile github.com/jackc/puddle golang.org/x/crypto golang.org/x/text'
+          # .Module is nil for packages outside any module, hence the `and`.
+          tmpl='{{if not .Standard}}{{if not (and .Module .Module.Main)}}{{.ImportPath}}{{end}}{{end}}'
+          IMPORTS=$(go list -deps -f "$tmpl" ./...) || {
+            echo "go list -deps ./... failed — the package graph is unreadable, so dependency discipline cannot be proven"
+            exit 1
+          }
+          MODGRAPH=$(go mod edit -json) || {
+            echo "go mod edit -json failed — go.mod does not parse"
+            exit 1
+          }
+          export IMPORTS MODGRAPH
+          python3 - <<'PY'
+          import json, os, sys
+
+          # ADR-0010 §2 exception list, as module path prefixes: pgx and the
+          # modules pgx itself requires. This list *is* the ADR, not a
+          # preference — a new entry needs a new ADR first, and a pgx bump that
+          # pulls in another module trips this gate on purpose. Prefixes are
+          # enough to judge imports today; once pgx is actually pinned,
+          # ADR-0010's exception list must record the resolved closure with
+          # exact versions.
+          allowed = os.environ["ALLOWED"].split()
+
+
+          def permitted(path):
+              # exact prefix or a subpackage of it: 'github.com/jackc/pgxfoo'
+              # must not pass as 'github.com/jackc/pgx'.
+              return any(path == p or path.startswith(p + "/") for p in allowed)
+
+
+          problems = []
+          for pkg in os.environ["IMPORTS"].split():
+              if not permitted(pkg):
+                  problems.append("imported package outside the exception list: " + pkg)
+
+          mods = json.loads(os.environ["MODGRAPH"])
+          for req in mods.get("Require") or []:
+              if not permitted(req["Path"]):
+                  problems.append("go.mod require outside the exception list: %s@%s"
+                                  % (req["Path"], req.get("Version", "")))
+          for rep in mods.get("Replace") or []:
+              # Replace entries carry Old/New, not Path (go mod edit -json).
+              old = (rep.get("Old") or {}).get("Path", "?")
+              new = rep.get("New") or {}
+              problems.append("go.mod replace is never allowed here — a fork can hide "
+                              "behind an approved import path: %s => %s %s"
+                              % (old, new.get("Path", "(module dropped)"), new.get("Version", "")))
+          for exc in mods.get("Exclude") or []:
+              problems.append("go.mod exclude is never allowed here: %s@%s"
+                              % (exc["Path"], exc.get("Version", "")))
+          for ret in mods.get("Retract") or []:
+              problems.append("go.mod retract is never allowed here: %s" % json.dumps(ret))
+
+          if problems:
+              print("WORKFLOW §4 / ADR-0010 §2 violated — Go stdlib plus the pinned")
+              print("exception list only (currently pgx and its own module deps):")
+              print("\n".join("  " + p for p in problems))
+              print("Fix: drop the dependency, or amend ADR-0010 in a merged ADR PR first.")
+              sys.exit(1)
+          print("ok: %d non-stdlib imported package(s) checked against ADR-0010"
+                % len(os.environ["IMPORTS"].split()))
+          PY
+
+      - name: go mod verify + vendor/ consistent and committed (WORKFLOW §4, ADR-0010 §2b)
+        run: |
+          set -euo pipefail
+          # `go mod verify` is the check §4 names: module cache content matches
+          # go.sum. It is not a substitute for the vendoring checks below.
+          go mod verify
+          if [ -d vendor ]; then
+            # Vendored means in-repo: an untracked vendor/ tree is invisible to
+            # reviewers and cannot be audited.
+            if ! git ls-files --error-unmatch vendor/modules.txt >/dev/null 2>&1; then
+              echo "vendor/ exists but vendor/modules.txt is not committed (ADR-0010 §2b)"
+              exit 1
+            fi
+            # Go fails with "inconsistent vendoring" when vendor/modules.txt
+            # disagrees with go.mod, and — unlike a plain `go build ./...` — it
+            # has no silent fall-back to the module proxy.
+            go build -mod=vendor ./...
+          else
+            # Requires without vendor/ would otherwise build fine over the
+            # network; ADR-0010 §2b demands the code be in-repo and pinned.
+            # `go mod edit -json` omits an empty Require list entirely, so the
+            # key's presence is the structural test (this is the normalised
+            # output of the go tool, not a grep over go.mod text).
+            if go mod edit -json | grep -q '"Require":'; then
+              echo "go.mod requires modules but there is no vendor/ (ADR-0010 §2b): run 'go mod vendor', commit vendor/"
+              exit 1
+            fi
+            echo "ok: no external modules required, so no vendor/ is needed yet"
+          fi
+
+  contracts:
+    # The vectors in A0/A1/A2 are normative (contracts/README.md), and the
+    # verifier script is the only executable statement of what "frozen" means.
+    # Runs on every branch: none of the checks below needs a Go module, and a PR
+    # that edits only contracts/*.md must not be able to skip them. The hygiene
+    # step lives here for the same reason — it has to run on Markdown-only
+    # branches too. NOTE: a job's name is its required-check name, so this
+    # rename is visible in branch protection.
+    name: contract vectors (A0/A1/A2) + I-02 code points + workspace hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: detect
+    steps:
+      - name: check out the branch
+        uses: actions/checkout@v4  # major tag: see the A10 note in the detect job
+
+      # WORKFLOW §7 requires the GitHub token to be read per command and never
+      # written to a file, committed, or logged; ADR-0019 §5 forbids secret
+      # material in the repo at all. Names only, and deliberately so: reading
+      # file contents would copy the secret material into the CI log, which is
+      # exactly what §5 is about. No secret-scanning service, no diff filter — a
+      # committed credential is already in the tree, so the assertion is about
+      # `git ls-files`, and failing closed on a name that merely looks like a
+      # private key or an editor/merge dropping is the cheaper mistake.
+      - name: no credential files or editor droppings are tracked (WORKFLOW §7, ADR-0019 §5)
+        run: |
+          set -euo pipefail
+          files=$(git ls-files) # an unreadable tree must fail the step, not pass it
+          pat='(^|/)id_rsa|\.pem$|\.key$|\.token$|~$|\.orig$|\.rej$'
+          # git ls-files plus this one grep over those paths. `if` context is
+          # what absorbs grep's "no matches" status 1; `|| true` would swallow
+          # real failures too, which is how a fail-open gate is born.
+          if bad=$(printf '%s\n' "$files" | grep -E "$pat"); then
+            printf '%s\n' "$bad"
+            echo "tracked file name(s) above look like credentials or editor/merge droppings"
+            echo "(WORKFLOW §7, ADR-0019 §5). Remove them from the tree and rotate the secret."
+            exit 1
+          fi
+          echo "ok: tracked file names checked against credential/droppings patterns, contents never read"
+
+      - name: pin the interpreter the verifier runs on (no runner-image drift)
+        uses: actions/setup-python@v5  # major tag: see the A10 note in the detect job
+        with:
+          python-version: '3.12'
+
+      - name: recompute every published vector, assert FAIL 0 and a clean exit (contracts/README.md)
+        if: needs.detect.outputs.vectors == 'true'
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          scripts=(docs/reviews/*-verify-vectors.py)
+          if [ "${#scripts[@]}" -eq 0 ]; then
+            echo "detect reported a verifier but none matched docs/reviews/*-verify-vectors.py"
+            exit 1
+          fi
+          for s in "${scripts[@]}"; do
+            echo "== $s"
+            # The script recomputes every digest and length published in
+            # A0/A1/A2, and since 2026-09-21 it ends in
+            # 'sys.exit(1 if bad else 0)'. Its A1-7.6 PayloadHash check was
+            # strengthened in the same change: it no longer compares the
+            # preimage against a digest hardcoded in the script, but reads the
+            # length and digest *published in A1* and requires both to match,
+            # so editing the frozen contract's printed digest is detected.
+            # Both claims re-verified against corrupted copies under /tmp (the
+            # real file untouched): tampering the published digest, the
+            # published length, or the preimage each prints 'PASS 51 / FAIL 1'
+            # and exits 1; the untouched contract prints 'PASS 52 / FAIL 0' and
+            # exits 0.
+            #
+            # Two assertions, both required:
+            #   1. exit code — a broken contract now fails the check itself,
+            #      not only a log line somebody has to read;
+            #   2. the printed summary line — kept as the assertion of record
+            #      because it is strictly stronger than the exit code: a
+            #      verifier whose regexes stopped matching anything computes
+            #      zero checks, so its failure list stays empty and it exits 0
+            #      while printing 'PASS 0 / FAIL 0'. Requiring 'PASS n' with
+            #      n >= 1 catches that vacuous shape — exactly how I-02 got
+            #      introduced (the verifier silently skipped V7/V8).
+            # Keeping the total honest is also the script's own job; it checks
+            # 'A0 vector count == 8' and 'A2 examples checked >= 4'.
+            # Output is captured before either assertion runs, so the script's
+            # 'FAIL:' detail lines are always in the log.
+            rc=0
+            summary=$(python3 "$s") || rc=$?
+            printf '%s\n' "$summary"
+            if [ "$rc" -ne 0 ]; then
+              echo "vector verifier exited $rc — the frozen vectors are not reproduced (contracts/README.md)"
+              exit 1
+            fi
+            if ! printf '%s\n' "$summary" | grep -qx 'PASS [1-9][0-9]* / FAIL 0'; then
+              echo "contract vectors are not all reproduced: expected a final 'PASS n / FAIL 0' line (n>=1)"
+              exit 1
+            fi
+          done
+
+      - name: no raw U+2028/U+2029/U+007F in contract table rows (integrator finding I-02)
+        run: |
+          set -euo pipefail
+          # Table rows only: A1's preimage blocks legitimately contain the raw
+          # code points, because they *are* the normative bytes. In a table row
+          # they change how many lines a reader sees (splitlines 3123 vs grep
+          # 3119 on today's A1), so a vector's position becomes tool-dependent.
+          python3 - <<'PY'
+          import glob
+          import io
+          import sys
+
+          banned = "\u2028\u2029\u007f"
+          bad = []
+          files = sorted(glob.glob("contracts/**/*.md", recursive=True))
+          for path in files:
+              text = io.open(path, encoding="utf-8", newline="").read()
+              for number, line in enumerate(text.split("\n"), 1):
+                  if line.lstrip().startswith("|") and any(c in line for c in banned):
+                      bad.append(f"{path}:{number}")
+          if bad:
+              print("I-02: line-break/control code points inside a Markdown table row")
+              print("make a normative vector's line count reader-dependent. Use the")
+              print("A0 <2028>/<2029>/<7F> placeholders and decode them in the vector:")
+              print("\n".join(bad))
+              sys.exit(1)
+          print(f"ok: {len(files)} contract file(s) scanned, no raw code points in table rows")
+          PY

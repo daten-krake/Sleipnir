@@ -1,4 +1,4 @@
-import hashlib, json, re, io, collections
+import hashlib, json, re, io, collections, sys
 def rd(p): return io.open(p, encoding='utf-8', newline='').read()
 P = 'contracts/'
 A0, A1, A2 = rd(P+'A0-conventions.md'), rd(P+'A1-events.md'), rd(P+'A2-graph.md')
@@ -32,9 +32,21 @@ for (num,kind,pl,pd_,sl,sd),(pn,pre) in zip(rows,pres):
         f"pre {len(b)}/{pl} served {len(sb)}/{sl}")
     prev=h
 # A1 PayloadHash
+# Strengthened 2026-09-21 (WP-01): this check used to compare the preimage block
+# against a digest hardcoded HERE, so the value *published in the contract* was
+# never verified - editing A1-7.6's printed digest left the suite green. It now
+# reads the published length and digest out of the document and requires both to
+# match the recomputation and the original 2026-09-11 constant. Check count is
+# unchanged (still 52) because this strengthens one check rather than adding one.
 blk = re.search(r'^    (\{"kind":"command_executed".*\})$', A1, re.M)
-chk("A1-7.6 PayloadHash vector", blk and len(blk.group(1).encode())==293
-    and hashlib.sha256(blk.group(1).encode()).hexdigest()=='19d976a83cc9d36ac160313a20b80c0745fff805526b7f43f88d05e33c7be5e5')
+pub = re.search(r'\*\*len (\d+)[^\n`]*SHA-256\s*`([0-9a-f]{64})`\*\* over', A1)
+PAYLOAD_HASH = '19d976a83cc9d36ac160313a20b80c0745fff805526b7f43f88d05e33c7be5e5'
+chk("A1-7.6 PayloadHash vector", blk and pub
+    and len(blk.group(1).encode()) == 293
+    and int(pub.group(1)) == len(blk.group(1).encode())
+    and pub.group(2) == PAYLOAD_HASH
+    and hashlib.sha256(blk.group(1).encode()).hexdigest() == PAYLOAD_HASH,
+    f"published={pub.groups() if pub else None} recomputed={len(blk.group(1).encode()) if blk else None}")
 # A2 fingerprint vectors
 KEYS=['addresses','attrs','basis','cidr','claim','credential_kind','domain','evidence_id','evidence_ids','kind','label','media_kind','port','protocol','severity','sid','size_bytes','status','summary','transport']
 STR={'basis','cidr','claim','credential_kind','domain','evidence_id','kind','label','media_kind','protocol','severity','sid','status','summary','transport'}
@@ -100,3 +112,8 @@ for s,t in (('A0',A0),('A1',A1),('A2',A2)):
 chk("no dangling clause references", not dang, str({f"{k[0]}->{k[1]}":sorted(v) for k,v in dang.items()}))
 print(f"PASS {len(ok)} / FAIL {len(bad)}")
 for b in bad: print("  FAIL:", b)
+# Exit non-zero on any failure. Added 2026-09-21 (WP-01): without this the
+# script printed "FAIL n" and still exited 0, so a CI step gating on the exit
+# code passed a broken contract. The printed line stays the human-readable
+# summary and the assertion of record for the 52-check baseline.
+sys.exit(1 if bad else 0)

@@ -50,11 +50,29 @@ an ADR, and DESIGN.md conflict, ADR > SPEC > DESIGN.
   `component.Function: what was attempted: key identifiers: cause` and be
   self-contained for troubleshooting from logs alone.
 - Structured logging via stdlib `log/slog` with subsystem loggers and
-  correlation attributes (engagement, run, job, node).
+  correlation attributes. **Spelling is frozen A0-3.6's**, not ADR-0019 §3's
+  short forms: `engagement_id`, `run_id`, `job_id`, `node_id`. `node_id` always
+  means the **remote agent node** (`slp_node_`, Q9); a graph node is
+  `graph_node_id` (`gn_`). The two must never be conflated. (A0-3.6 records that
+  ADR-0019 §3's "node" predates ADR-0016's graph vocabulary; the frozen
+  contract governs.)
 - Log-or-return, never both: an error is logged exactly once, where it is
   handled/decided.
 - Secrets (credentials, tokens) never appear in errors or logs; use the
   redaction helpers and write tests proving it.
+- **A redaction type must implement `MarshalJSON` and `MarshalText`, never
+  `String()` alone.** `slog`'s JSON handler marshals a `KindAny` attribute value
+  with `encoding/json`, which **ignores `fmt.Stringer`** — so a String-only
+  redaction helper silently leaks every exported field of the value into the log
+  record it was supposed to protect. It must also survive *every* `fmt` verb:
+  `%T` and `%p` are handled before `fmt.Formatter`, and `fmt`'s bad-verb path
+  prints struct fields by reflection with `Stringer` and `Formatter` suppressed,
+  so a secret held in a plain `string` field renders verbatim under `%p`. Hold
+  it behind a closure (`internal/errs.Secret` is the reference implementation)
+  and pin the whole verb set with a test.
+- Never drop an audit record and never panic in a request or job path
+  (ADR-0019 §6): a logging helper given a nil logger falls back to
+  `slog.Default()` rather than panicking or discarding the record.
 
 ## Safety-critical code = high review bar
 
@@ -81,4 +99,18 @@ before merge.
 - Tests are mandatory for enforcement logic: for every safety rule there
   must be a test proving the rule holds *and* a test proving the bypass
   attempt fails.
+- **Never prove a negative test by removing the bound and running it.**
+  Deleting or short-circuiting a guard (depth cap, size limit, timeout) in the
+  working tree turns a bounded loop into an unbounded one. On 2026-09-21 an
+  agent disabled `internal/errs`' `maxChainDepth` check to show
+  `TestErrorChainWalkIsBounded` could fail, then ran it: the cyclic-chain cases
+  appended to a `strings.Builder` forever, `errs.test` reached 11.4 GB RSS, the
+  kernel OOM-killed it, and the whole WSL VM went down — taking the session and
+  every sibling agent with it. The killed agent left the disabled guard in the
+  tree and its `/tmp` backup did not survive the reboot. Assert the bound's
+  *effect* instead (the truncation notice, the rendered layer count); no
+  mutation needed. If a mutation proof is truly unavoidable: mutate a copy
+  outside the repo, restore via `defer`/trap that survives a failed run, never
+  rely on a `/tmp` backup, and always run capped (`ulimit -v`, `GOMEMLIMIT`,
+  short `-timeout`).
 - Keep changes reviewably small; one concern per change.
