@@ -119,6 +119,51 @@ Package layout of the monorepo given stdlib-only + pgx exception.
   and who A0-2.14's `internal` is for — A0-8.3 settles it). Next: **WP-08
   `internal/paging`** (A0-4 — the first package needing both `ids` and `cjson`),
   with **WP-13 `internal/secretscan`** as the parallel option.
+- 2026-09-29: **WP-08 and WP-13 delivered** in two parallel lanes, one PR.
+  `internal/paging` (3 files, 1508 lines, exactly the seven test ids §4.1 and
+  the WP-08 review row name) and `internal/secretscan` (3 files, 1053 lines,
+  exported surface exactly `func Scan(field, value string) error`, the ten-row
+  A2-9.4 table transcribed byte-exactly and verified twice independently).
+  Plus a four-line fix to **`internal/errs.callerOp`**, which did not strip a
+  generic instantiation's type-argument list and so rendered every error from a
+  generic function as `paging.NewPage[...]` instead of `paging.NewPage`
+  (ADR-0019 §2, A0-3.4). Two independent reviews gave **22 findings and not one
+  was a code defect in the shipped logic** — the 2026-09-24 pattern held:
+  citation accuracy, doc claims, and test non-vacuity. Four non-vacuity gaps
+  closed and mutation-proven in copies outside the repo: `secretscan`
+  hand-transcribed the rule-*id* column but never the *regexp* column, so
+  narrowing `SEC-KRB {1,128}→{1,8}` passed everything; two SEC-ENTROPY knobs
+  (threshold, alphabet) were unpinned; six `paging` rejection rows asserted the
+  stage substring `"canonical"`, which the wrapper prose also contains. One real
+  Go behaviour found: **1.27's `base64.RawURLEncoding` is lenient about the
+  final quantum's unused low bits** (16 spellings decode identically at length
+  ≡ 1 mod 3), so A0-4.4's "replay byte-for-byte" is enforced by
+  `DecodeCursor`'s re-encode step, not by the stdlib. **Six errata ruled and
+  applied** (A0 §6 items 19–23, A1 §6 item 18, A2 §6 item 15); the consequential
+  one is A2-9.4: see the standing question below. All eight packages green under
+  `GOMEMLIMIT`/`-race`, `verify-vectors.py` still **PASS 52 / FAIL 0**, `go.mod`
+  still zero requires. Next: WP-09…WP-12 (`events`) ∥ WP-14…WP-16 (`graph`).
+- 2026-09-29 (roadmap): **the product owner asked how far away the first
+  HackTheBox test is**, and the honest answer exposed a gap the WP list hides:
+  **WP-00…WP-22 all serve A0/A1/A2, and WP-22 — the end of the planned road —
+  produces no binary at all.** No `cmd/`, no `deploy/`, no Dockerfile, no HTTP
+  listener, no container spawn; A3/A4/A5/A7/A8 not started; nine design sessions
+  never held. On that road the first box is ~25–35 sessions out (~Feb 2027).
+  `docs/2026-09-29-walking-skeleton-plan.md` (569 lines, its own PR) proposes
+  **~21 sessions, first run attempt 2026-12-08, band 2026-11-24 → 2027-01-15**,
+  bought with nine named deferrals (**D10–D18**, §2.4) and **WP-23…WP-41**. It
+  leans on two levers the product owner already pulled: Q13's additive-only
+  versioning, and **Q1's own review trigger for A3 — "after first real HTB
+  engagement"** — which makes designing A3 now premature by the owner's ruling.
+  ADR-0020's `cloud_raw` default for lab/HTB defers the whole masking subsystem.
+  Not cut, and two additions to the principal's list: the hash chain **plus its
+  verification walk** (chaining without a walk is tamper-*delayed*),
+  platform-core enforcement, spawn-broker isolation, secret-free serialization,
+  **the A2-8 quarantine seam** (D7 says record not refuse, and the HTB VPN
+  guarantees out-of-scope discoveries on run one) and **the D5 signed-webhook
+  head anchor** (the only control surviving store-write + log-write on one host,
+  nearly free once `notify` exists). Narrowed one: keep the evidence *store*,
+  cut the evidence *browser*. **Needs a decision session before WP-23.**
 - 2026-09-04 (design interview): **all session-1 decisions locked** —
   fixed stage views + capped 1-hop (no query endpoint v1); two node types
   Finding/Hypothesis; hard-reject validation; size budgets as contract
@@ -246,6 +291,47 @@ as the data source; define drift thresholds and reaction (alert,
 quarantine model from role matrix). Added 2026-09-04.
 
 ## Standing open questions
+
+- **D10–D18, the walking-skeleton deferrals** (new 2026-09-29, →
+  `docs/2026-09-29-walking-skeleton-plan.md` §2.4, needs a decision session
+  before WP-23): A4-min at ~20 endpoints; **no A3 before the first run**;
+  gateway `cloud_raw` + `local_only` only; no SSE (HTMX 2 s polling); no cleanup
+  run; no report generator; a JSON-file tool registry; **no TOTP**; worker
+  results via the platform. Each is a deferral of a frozen clause, a locked Q or
+  an Accepted ADR, each priced with its reversal path. Read D17 first — it leaves
+  the account that approves attacks and fires the hard stop without a second
+  factor.
+- **The worker-egress ADR still does not exist** (adversarial finding A3, CRIT,
+  → §7). The plan's §5 recommends **E1**: per-run bridge networks from a
+  pre-provisioned pool, egress allowlist in **host** nftables installed once by
+  `deploy/`, no container gets `NET_ADMIN`, with E2 behind one
+  `Allocate(runID, scope) → networkName` seam. E3 (user-mode proxy) is dead on
+  arrival because nmap cannot be proxied. Must be accepted before WP-29.
+- **A2-9.4's platform-minted exemption is ruled but unimplemented and
+  untested** (new 2026-09-29, → WP-11 and WP-15): `SEC-ENTROPY` rejects
+  **~28 % of the platform's own `slp_node_` ids** (5 671 of 20 000 measured;
+  `slp_node_` + 26 = 35 chars is the only A0-1.2 form reaching the ≥ 32 window
+  and `_` is inside the rule's alphabet), plus container and network names built
+  from an id body. A1's envelope key 6 *is* `node_id`, so roughly one Pi-node
+  event in four would be rejected at ingest. The product owner ruled a
+  **caller-side exemption** (skip `Scan` for a value passing `ids.Valid` for the
+  field's declared kind, and for A1-2.3 platform-stamped fields); the rule table
+  is byte-identical and `Scan` is unchanged, and `secretscan` *cannot* implement
+  it because that would need an `ids` import. **WP-11 and WP-15 MUST wire the
+  caller side**, and nothing tests the exemption until they do.
+- **A0 §4.1's k/id oracle split must be read before WP-19 starts** (new
+  2026-09-29): `TestCursorWithInconsistentKAndIDRejected` is registered as the
+  only oracle for A0-4.4's k/id rule across A0/A1/A2, but A0-4.8's
+  row-resolution half needs a collection. `internal/paging` owns the decode-time
+  half; WP-19/WP-20 own the other and WP-22 exercises it against PostgreSQL.
+  Unclaimed, that half is enforced nowhere while a traceability audit reads the
+  clause as covered.
+- **`secretscan`'s planted corpus is provisional** (new 2026-09-29, → WP-19/20/
+  21): A2-9.4 says the one-value-per-rule-id corpus "lives in the shared suite",
+  which does not exist yet, so `internal/secretscan` carries a local copy.
+  Move it into the shared-suite package and have `events` and `graph` import it
+  — never the reverse, `secretscan` must not import its own oracle — then shrink
+  the local copy. Three packages inventing their own corpus is the drift risk.
 
 - Offline capability of the Pi agent (session 4).
 - Which AD attack techniques are in/out of v1 tool registry scope

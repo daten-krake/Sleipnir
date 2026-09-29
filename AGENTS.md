@@ -120,8 +120,10 @@ before merge.
   2026-09-24 a reviewer spent four minutes in `find /` and was interrupted,
   losing its whole report. A child's completion preview truncates mid-finding,
   so recover the full text from
-  `~/.pi/agent/sessions/<parent>/<child-run>/run-0/session.jsonl` before acting
-  on it. And treat your own brief as untrusted input: that day three
+  `~/.pi/agent/sessions/<slugified-cwd>/subagent-artifacts/<child-run>_<agent>_<n>_output.md`
+  before acting on it (path verified 2026-09-29; the
+  `<parent>/<child-run>/run-0/session.jsonl` shape recorded here before does not
+  exist in this harness). And treat your own brief as untrusted input: that day three
   implementers found four defects in the principal's briefs and in the frozen
   contract (two became A0 §6 errata 16 and 17) — a child that surfaces a bad
   instruction instead of following it silently is succeeding, not failing.
