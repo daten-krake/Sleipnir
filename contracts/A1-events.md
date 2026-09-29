@@ -685,6 +685,12 @@ absorbed" — including every offline-node replay (ADR-0013).
   worker-side procedure (upload, reference, never inline).
   - Ingest scanning: the platform MUST run the `internal/secretscan` rules of
     A2-9.4 over every string field and every array element of an append payload,
+    **except the platform-minted fields A2-9.4's exemption names** (_erratum
+    2026-09-29, A2 §6 item 15 / A1 §6 item 18_: a value that passes `ids.Valid`
+    for the A0-1.2 kind this contract declares for that field, or a field the
+    platform stamps and §2.3 forbids a caller to supply — without the exemption
+    `SEC-ENTROPY` rejects 28.4 % of the platform's own `slp_node_` ids, and
+    envelope key 6 *is* `node_id`),
     and MUST reject a match with `validation` naming the **field** and the
     **rule id** — never echoing the value, a prefix of it, or its digest
     (A2-9.5). The rejection stays observable as
@@ -3066,6 +3072,27 @@ assumed to be already granted, and A1's own numbering of amendment requests
     `engagement_assignment_changed` additively (A1-3.5); an insider admin
     self-assigning and then approving is detectable only in A5's store
     (adversarial C-08).
+
+18. **A1-4.9 — ERRATUM (product owner decision 2026-09-29, mirrors A2 §6
+    item 15; the A2-9.4 rule table is unchanged).** A1-4.9 mandated the
+    `internal/secretscan` scan over "every string field and every array element
+    of an append payload". Envelope key 6 is `node_id: string slp_node_`, and
+    the principal measured `SEC-ENTROPY` rejecting **5 671 of 20 000** ids from
+    `ids.New(ids.AgentNode)` (28.4 %): `slp_node_` + 26 = 35 characters is the
+    only A0-1.2 form reaching the rule's ≥ 32 window and `_` is inside its
+    alphabet, so a whole node id is one high-entropy run. Left unfixed, roughly
+    one Pi-node event in four would be rejected at ingest, breaking the
+    remote-agent path (ADR-0013, SPEC §4.4, A1-7.6/7.11). The product owner
+    ruled A2-9.4's **platform-minted exemption** and A1-4.9 now cites it: the
+    scan skips a field whose value passes `ids.Valid` for the A0-1.2 kind this
+    contract declares for it, and a field the platform stamps and A1-2.3
+    forbids a caller to supply. The exemption is unreachable by a hostile worker
+    — A1-2.3 already rejects caller-supplied platform-stamped fields
+    (`TestAppendRejectsPlatformStampedFields`) and `ids.Valid` is byte-exact
+    (A0-1.5) — so nothing is weakened against untrusted input, and no rule id,
+    regexp, threshold or window changed. **Blocks WP-11**, which wires the scan
+    into `internal/events` validation and MUST implement the caller-side
+    exemption.
 
 ### A0 amendment requests
 

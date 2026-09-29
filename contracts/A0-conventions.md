@@ -341,7 +341,10 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   digest (A2-9.5, A1-4.9)**; consumers MUST treat it as
   untrusted content when rendering or feeding it to a model (SPEC §6, ADR-0018
   §4).
-  Tests: TestSecretScanNamesFieldNotValue, TestNoSecretValueOrDigestInError.
+  Tests: TestSecretScanNamesFieldNotValue, TestNoSecretValueOrDigestInError
+  (both shared-suite ids, WP-19/WP-20; the package-level oracle for the same
+  rule is A2-9.4's TestErrorMessageNamesFieldAndRuleIDOnly, shipped by
+  `internal/secretscan` — _erratum 2026-09-29, §6 item 23_).
 - **A0-3.5** For `internal` and `upstream` the cause segment MAY be generalized
   to the subsystem (`postgres: statement failed`, `llm: endpoint returned 500`)
   when the underlying text is not platform-controlled; the full cause chain
@@ -411,7 +414,7 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   text key is only the tie-breaker carried in `id`. A collection whose order key
   is text MUST declare its own cursor shape in its own contract; A0-4.4's
   two-key set is closed.
-- **A0-4.4** A cursor is base64url-unpadded (A0-8.5) of the **canonical JSON**
+- **A0-4.4** A cursor is base64url-unpadded (A0-8.6) of the **canonical JSON**
   (A0-2) object `{"id":"<id of last row>","k":<ordering value of last row>}`
   (canonical order puts `id` first, A0-2.4) — the complete ordering tuple of the
   last returned row. Cursors are opaque: replay byte-for-byte, never decode,
@@ -428,7 +431,9 @@ fingerprint *content* (A7) · config (A8) · DDL/persistence schema (backlog 6)
   Tests: TestDecodeCursorRejects, TestCursorWithInconsistentKAndIDRejected,
   TestHasMoreDetection.
 - **A0-4.5** `limit` is a query parameter: absent → **100** (the default), hard
-  maximum **1000**. A `limit` that is present but unparseable, ≤ 0,
+  maximum **1000** — registry names `DefaultPageLimit` / `MaxPageLimit`
+  (A0-7.1), Go definition `internal/paging`. A `limit` that is present but
+  unparseable, ≤ 0,
   non-integer, or > 1000 MUST be rejected with `validation` — never silently
   clamped. _Silent clamping lets an agent believe it saw the whole collection
   (Q3: never trust client discipline) — **Decided** (product owner,
@@ -603,6 +608,8 @@ Both rules, side by side — neither generalizes to the other:
   | `EvidenceRefsMax` | 8 | A1 `evidence_refs` count (A1-4.7) and A2 `evidence_ids` count — one value, A2's `EvidenceIDsMax` name is dropped | **R** | A1 + A2 |
   | `EventRefsMax` | 64 | A1 `revert_event_ids` / `non_revertable_event_ids` count | **R** (A1-4.7) | A1 |
   | `ExitCodeMin` / `ExitCodeMax` | -1 / 255 | A1 `exit_code` range (`-1` = no exit status) | reject → `validation` (A1-4.2) | A1 |
+  | `DefaultPageLimit` | 100 rows | A0-4.5 `limit` query parameter when absent | default, not a rejection | A0 |
+  | `MaxPageLimit` | 1000 rows | A0-4.5 `limit` query parameter; over-max is rejected, **never clamped** | reject → `validation` (A0-4.5) | A0 |
   | `IdempotencyKeyMaxBytes` | 64 B | A1-7.6 client deduplication key | reject → `validation` (A1-7.6) | A1 |
   | `NodeLabelMaxBytes` | 128 B | A2 node `label` | **R** (A2-7.1) | A2 |
   | `HypothesisClaimMaxBytes` | 512 B | A2 `hypothesis.claim` | **R** (A2-7.1) | A2 |
@@ -717,7 +724,10 @@ Both rules, side by side — neither generalizes to the other:
   reject the standard alphabet (`+`/`/`) and MUST reject `=` padding. Used for
   cursors (A0-4.4) and opaque binary values. Evidence *files* are not JSON and
   are out of scope (ADR-0009).
-  Tests: TestCursorRejectsStandardAlphabetAndPadding, TestEncodeCursorRoundTrip.
+  Tests: TestCursorRejectsStandardAlphabetAndPadding (registered in §4.1);
+  TestEncodeCursorRoundTrip is the clause-level name for the round trip that
+  §4.1's WP-08 row calls TestCursorRoundTripIsCanonicalBase64URL — one test,
+  two names, shipped under the WP-08 id (_erratum 2026-09-29, §6 item 20_).
 - **A0-8.7** Digests and MACs are lowercase hex (`encoding/hex`), 64 characters
   for SHA-256 — never base64, never uppercase. Container image digests are the
   exception: `image_digest` carries the registry's `<algorithm>:<hex>` form,
@@ -930,7 +940,7 @@ func DecodeCursor(s string, k ids.Kind) (Cursor, error)
       "recorded_at": "2026-09-07T14:03:22.481Z"
     }
   ],
-  "next_cursor": "eyJpZCI6ImV2dF8wMW0xeTJ3aGZocDE3ZzBhdmRxenRkMnAzIiwiayI6NDcxMX0"
+  "next_cursor": "eyJpZCI6ImV2dF8wMW0xeTJ3aGZocDE3ZzBhdmRxenRkMnAzeCIsImsiOjQ3MTF9"
 }
 ```
 
@@ -1052,6 +1062,15 @@ belong to the event-chain package that stamps `recorded_at` (WP-10) and not to
 §6 item 17_).
 `TestCursorWithInconsistentKAndIDRejected` has exactly one oracle across A0, A1
 and A2: `validation` (400), never "empty page or `validation`" (A0-4.4, A0-4.8).
+That one id covers **two** halves of the rule, and they have different owners
+(_erratum 2026-09-29, §6 item 22_): the **decode-time** half — the cursor's `id`
+is not of the `ids.Kind` the collection declared — is `internal/paging`'s, which
+is all A0-4.4's `DecodeCursor(s, k)` can see. The **row-resolution** half of
+A0-4.8 — the cursor's `id` does not resolve in this collection, or its `k`
+disagrees with the ordering value of the row it resolves to — needs a collection
+and a row lookup, so it belongs to the shared contract suite and the first real
+paginated read (WP-19/WP-20, and `store/postgres` at WP-22). A traceability
+audit MUST NOT read this row as discharging A0-4.8 on `internal/paging` alone.
 The positive counterparts of the canonicalization rules are the A0-2.17 accept
 vectors (V1–V8, the 32-deep document, the surrogate-pair string); the negative
 counterparts are its rejection entries.
@@ -1170,3 +1189,61 @@ decision.
     consumer finding `null` inside canonical bytes the platform already stored.
     No MUST, MUST NOT, bound value or published vector changed in either case,
     so both are errata and need no ADR.
+19. **§4 `paging` example — ERRATUM (product owner decision 2026-09-29, no
+    normative change).** The published `next_cursor` literal decoded to
+    `{"id":"evt_01m1y2whfhp17g0avdqztd2p3","k":4711}` — a **25**-character id
+    body — while `items[0].event_id` in the very same example carries the
+    **26**-character body A0-1.1 requires. The contract's own illustration was
+    therefore not a valid A0-1.2 id and `DecodeCursor` MUST reject it. Found by
+    the WP-08 implementer, who pinned the published literal rather than
+    "fixing" it; the principal recomputed both directions independently in
+    Python. The literal now encodes the example's own `event_id`, and
+    `internal/paging` pins the corrected bytes **and** keeps a subtest proving
+    the 25-character form is rejected. No MUST, constant or A0-2.17 vector
+    changed, so this is an erratum and needs no ADR.
+20. **A0-4.4 / A0-8.6 — ERRATUM (product owner decision 2026-09-29, no
+    normative change).** Two citation defects on the base64url rule. (a) A0-4.4
+    wrote "base64url-unpadded (A0-8.5)"; A0-8.5 is the closed-enum
+    `snake_case` rule and the base64url-unpadded rule is A0-8.6, so the
+    parenthetical now reads A0-8.6 — and `internal/paging`'s five inherited
+    A0-8.5 citations were corrected with it. (b) A0-8.6's `Tests:` line named
+    `TestEncodeCursorRoundTrip`, which §4.1 never registers, while the WP-08
+    review row names `TestCursorRoundTripIsCanonicalBase64URL` for the same
+    round trip. One test, two names: A0-8.6 now says so and the shipped id is
+    the WP-08 one, so §4.1's table stays the single registry. No rule changed.
+21. **A0-7.1 / A0-4.5 — ERRATUM (product owner decision 2026-09-29, adds two
+    registry rows, no value change).** A0-4.5 has fixed `limit` at default 100
+    and hard maximum 1000 since the freeze, but the A0-7.1 registry carried no
+    row for them, while A0-7.2 forbids a second definition of a registry value
+    anywhere in the platform — so `internal/paging`'s `DefaultLimit`/`MaxLimit`
+    were the only Go definition of a contract constant the registry did not
+    know about. The registry now carries `DefaultPageLimit = 100` and
+    `MaxPageLimit = 1000` with mechanism "reject → `validation`", following the
+    precedent of its only other numeric range (`ExitCodeMin`/`ExitCodeMax`),
+    and A0-4.5 cites both names. The numbers are unchanged and were already
+    product-owner decisions (§6 item 10), so this is an erratum and needs no
+    ADR; `internal/paging` stays their single Go definition.
+22. **§4.1 / A0-4.4 / A0-4.8 — ERRATUM (product owner decision 2026-09-29, no
+    normative change).** §4.1 registered
+    `TestCursorWithInconsistentKAndIDRejected` as the one oracle for the k/id
+    rule across A0, A1 and A2, but that rule has two halves and only one is
+    checkable at decode time. A0-4.4's `DecodeCursor(s, k ids.Kind)` can see
+    only whether the cursor's `id` is of the declared kind; A0-4.8's
+    "the cursor's `id` does not resolve in this collection, or its `k`
+    disagrees with the ordering value of the row that `id` resolves to" needs a
+    collection and a row lookup, and `internal/paging` is a foundation package
+    with no store dependency (DESIGN §1 forbids foundation → service). §4.1's
+    naming rulings now split the id: `internal/paging` owns the decode-time
+    half, WP-19/WP-20 own the row-resolution half and WP-22 exercises it
+    against PostgreSQL. Found by the WP-08 implementer and confirmed by its
+    independent review; unclaimed, the second half would have been enforced
+    nowhere while a traceability audit read the clause as covered. No MUST
+    changed, so this is an erratum and needs no ADR.
+23. **A0-3.4 / A2-9.4 — ERRATUM (product owner decision 2026-09-29, no
+    normative change).** Two test-name vocabularies guarded one rule: A0-3.4
+    named `TestSecretScanNamesFieldNotValue` and
+    `TestNoSecretValueOrDigestInError`, while A2-9.4 — which owns the rule
+    table — named `TestErrorMessageNamesFieldAndRuleIDOnly`. WP-13 ships
+    A2-9.4's four ids in `internal/secretscan`; A0-3.4's two are shared-suite
+    ids (WP-19/WP-20) and now say so, naming the package-level oracle they
+    duplicate. Found by the WP-13 implementer. No MUST changed.
