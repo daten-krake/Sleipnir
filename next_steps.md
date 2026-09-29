@@ -1,117 +1,120 @@
 # NEXT STEPS — after session 2026-09-24
 
-Goal of the next session: **get PR #4 merged, then write WP-07
-`internal/cjson`** — the one canonical-JSON form (A0-2). It is the last
-foundation package with a high review bar, and A1's hash chain, ADR-0018's
-approval fingerprints and WP-08 `internal/paging` all depend on it.
+Goal of the next session: **WP-08 `internal/paging`** (A0-4, the one list
+envelope and its cursors) — the first package that needs two siblings, `ids`
+and `cjson`, both merged today. If the session has room, **WP-13
+`internal/secretscan`** runs in a parallel lane (it imports only `errs`); it is
+the one lane whose brief must quote **A2** verbatim, because its closed rule
+table exists nowhere else.
 
 ## 0. Housekeeping (do these first)
 
-- [ ] **PR #4** — <https://github.com/daten-krake/Sleipnir/pull/4>
-      (`foundation/ids-timex-caps` → `main`, label `agent-built`). The product
-      owner reviews three new foundation packages, **two A0 errata** (§6 items
-      16 and 17 — both already ruled, both recorded in the session tracker),
-      the **ADR-0019 §3 amendment note** and the new `AGENTS.md` delegation
-      bullet.
-- [ ] Branch pushed, tree clean at session close, CI green on the PR
-      (`detect` + `go-gates` + `contracts`; the last runs because this branch
-      touches `contracts/`). `git status` / `git fetch` first; local `main`
-      needs a fast-forward after the merge.
-- [ ] After the merge: delete the branch locally **and** on the remote, as in
-      the 2026-09-21 and 2026-09-24 sessions.
-- [ ] `gh` on Linux is still **unauthenticated**; the working recipe is
-      WORKFLOW §7: `GH_TOKEN=$('/mnt/c/Program Files/GitHub CLI/gh.exe' auth token) gh …`.
+- [ ] **PR #6** — <https://github.com/daten-krake/Sleipnir/pull/6>
+      (`sessions/close-2026-09-24` → `main`, label `agent-built`): the close
+      ritual for 2026-09-24 — both trackers marked merged, `sessions/BACKLOG.md`
+      §2 + two standing questions, and this file. Docs only.
+- [ ] Nothing else is pending. PR #4 merged as `dd5837c`, PR #5 as `997bbcc`,
+      both feature branches deleted locally **and** on the remote, local `main`
+      fast-forwarded, and the gates re-run on `main`: all six foundation
+      packages green (`errs`, `logging`, `ids`, `timex`, `caps`, `cjson`),
+      `verify-vectors.py` **PASS 52 / FAIL 0**, A0 §6 items 16–18 present.
+- [ ] `gh` on Linux is still unauthenticated; WORKFLOW §7's recipe works:
+      `GH_TOKEN=$('/mnt/c/Program Files/GitHub CLI/gh.exe' auth token) gh …`.
       Never write the token to a file or a log (ADR-0019 §5).
-- [ ] No open question is waiting on the product owner: the ADR-0019 spelling
-      ruling and both errata were answered on 2026-09-24 and are recorded in
-      `sessions/BACKLOG.md` → Resolved.
+- [ ] CI triggers only on `pull_request` and on pushes to `main`, so a feature
+      branch's first pipeline run is the PR that opens it.
 
 ## 1. Context to load
 
-Use the `start-session` ritual (fixed order: SPEC → `adr/` → DESIGN →
-`sessions/BACKLOG.md` → AGENTS/WORKFLOW). **New since the last session:**
+`start-session` ritual, fixed order: SPEC → `adr/` (README + anything changed
+since 2026-09-24: **ADR-0019 §3 now carries an amendment note** — A0-3.6 governs
+the correlation-attribute spelling) → DESIGN → `sessions/BACKLOG.md` →
+AGENTS/WORKFLOW. **New since the last session:**
 
-- `internal/ids`, `internal/timex`, `internal/caps` — and **their `doc.go`
-  files are the entry point**. Each has a "Clauses implemented here" list, a
-  "Clauses deliberately not implemented here, and where they live" list, and a
-  "Rulings" list. Read them before writing a consumer: they say which clause
-  belongs to which later package (A0-5.4's clamp → WP-10, mechanism R → the
-  first ingest caller of `caps.Fits`, A0-1.9's collation test → `store/postgres`).
-- `contracts/A0-conventions.md` §6 items 16 and 17 (the two errata), A0-5.3's
-  corrected rationale, and §4.1's naming-rulings paragraph (which now names the
-  owner of the two clamp test ids).
-- `adr/ADR-0019-descriptive-errors-logging.md` §3's amendment note: A0-3.6
-  governs the correlation-attribute spelling.
-- `sessions/2026-09-24-foundation-ids-timex-caps.md` — the session record:
-  18 review findings (none a code defect), four defects the implementers found
-  in the principal's own briefs and in the frozen contract, and the rulings.
-- `AGENTS.md`'s new delegation bullet (read-only reviewers have no shell; child
-  completion previews truncate — recover the full report from the child's
-  `session.jsonl`; treat your own brief as untrusted input).
+- `internal/ids`, `internal/timex`, `internal/caps`, `internal/cjson` — and
+  **their `doc.go` files are the entry point**. Each lists the clauses it
+  implements, the clauses it deliberately does not *with the package that owns
+  them*, and its rulings. Read `cjson`'s before writing anything that hashes:
+  key identity is `foldKey` (orbit-minimum `unicode.SimpleFold`), exclusion
+  folds both sides, a null at any depth is `validation` (A0-8.3 settles
+  A0-2.14), `With`'s collision is `internal`, and `DigestEqual` needs its
+  `sha256.Size` width check because `subtle.ConstantTimeCompare` reports two
+  empty slices as equal.
+- `contracts/A0-conventions.md` §6 items **16, 17, 18** — the three errata ruled
+  2026-09-24 (the truncation marker is 11 B; A0-5.3's leap-second rationale was
+  false and §4.1 now names WP-10 as the clamp ids' owner; A0-2.11 says when each
+  bound bites and A0-2.14 says who its `internal` is for).
+- `sessions/2026-09-24-foundation-ids-timex-caps.md` and
+  `sessions/2026-09-24-cjson.md` — two trackers for one session (the
+  2026-09-07 precedent): 25 review findings across four packages, **not one a
+  code defect in the first three**, and six defects the children found in the
+  principal's own briefs and in the frozen contract.
+- `AGENTS.md`'s delegation bullet (new 2026-09-24): brief a child for the tools
+  it actually has, recover full child reports from
+  `~/.pi/agent/sessions/<parent>/<child-run>/run-0/session.jsonl` because
+  completion previews truncate mid-finding, and treat your own brief as untrusted
+  input.
 
-## 2. Plan once PR #4 is merged
+## 2. Plan
 
-1. **WP-07 `internal/cjson`** (A0-2.1…A0-2.17 + the A0 §4 `cjson` sketch).
-   `AGENTS.md` high-review bar: untrusted-input parsing on the integrity path.
-   One lane, one directory, then an independent review lane. Excerpt: the six
-   clauses that make it hard — `Decoder.Token()` walk with `UseNumber()` and
-   the number-literal re-validation (A0-2.5), integers only (A0-2.6), the
-   string-escape re-emission rules incl. literal U+2028/9 and U+007F (A0-2.7),
-   UTF-8 and lone-surrogate rejection that must **not** rely on
-   `encoding/json` (A0-2.3), its own depth/size bounds (A0-2.11: 32 / 1 MiB,
-   the same 32 `internal/errs` reuses for its chain walk), the top-level-only
-   exclusion list (A0-2.12), constant-time digest comparison (A0-2.15), and the
-   **V1–V8 normative vectors** (A0-2.17) asserted byte-exactly.
-   Test ids: A0 §4.1's rows for A0-2.3/2.5/2.11/2.14/2.15 and §4's `With`
-   (`TestInvalidUTF8Rejected`, `TestLoneSurrogateRejected`,
-   `TestDuplicateKeyRejected`, `TestCaseDuplicateKeyRejected`,
-   `TestCanonicalEmitsNumberLiteralText`, `TestRejections`, `TestDepthLimit`,
-   `TestSizeLimit`, `TestNilCollectionNeverSerializesAsNull`, `TestDigestEqual`,
-   `TestGatingComparisonsAreConstantTime`, `TestWithAddsKeys`,
-   `TestWithRejectsExistingKey`) plus the principal review's WP-07 row
-   (`TestCanonicalIsStableAcrossRuns`, `TestCanonicalDecodesEscapes`,
-   `TestExclusionListDropsTopLevelOnly`, `TestSHA256HexLowercase64`). The
-   vectors are **data, not a test id** (§4.1): name their test for V1–V8 — the
-   review report's `TestVectorsV1ToV7ByteExact` predates V8.
-   `docs/reviews/2026-09-11-verify-vectors.py` is the reference implementation
-   of the arithmetic in Python and CI recomputes every vector on a PR touching
-   `contracts/`; if cjson disagrees with it, one of them is wrong — find out
-   which before merging. `cjson` imports only `errs` (A0 §4 preamble).
-2. **WP-13 `internal/secretscan`** is parallel to WP-07 (it imports only
-   `errs`): A2-9.4's closed rule table + the P-46 rule ids, A2-9.5's
-   "name the field and the rule id, never the value" message rule, A1-4.9. It
-   is the one lane whose brief must quote **A2** verbatim — the rule table does
-   not exist anywhere else, and six named secret-free-serialization tests
-   cannot be written until it does.
-3. **WP-08 `internal/paging`** (A0-4.1…A0-4.8) after WP-07: `Page[T]`,
-   `Cursor`, `EncodeCursor`/`DecodeCursor` over `cjson.CanonicalValue` +
-   `RawURLEncoding`, validating the decoded cursor's id against `ids.Kind`
-   (A0-4.4, A0-1.5).
-4. Then the domain packages in the principal review §4's order: WP-09…WP-12
+1. **WP-08 `internal/paging`** — A0-4.1…A0-4.8 (`contracts/A0-conventions.md`
+   lines 396–455), A0-8.6's base64url rule (lines 680–718), the §4 `paging`
+   sketch (around line 901). `Page[T]`, `Cursor`, `EncodeCursor`,
+   `DecodeCursor(s string, k ids.Kind)`. It is the first package to import two
+   siblings (`ids` + `cjson`), so its brief must state that A0 §4's
+   "foundation packages import nothing internal but `errs`" applies to the
+   *other* five and that the sketch itself declares this dependency
+   (`cjson.CanonicalValue` + `RawURLEncoding`; `ids.Kind` for the cursor's id).
+   Test ids: A0 §4.1's rows A0-4.4/A0-4.5/A0-4.6/A0-8.6 —
+   `TestDecodeCursorRejects`, `TestCursorWithInconsistentKAndIDRejected`,
+   `TestLimitValidation`, `TestLimitAboveMaxRejectedNotClamped`,
+   `TestHasMoreDetection`, `TestCursorRejectsStandardAlphabetAndPadding` — plus
+   the WP-08 review row's `TestCursorRoundTripIsCanonicalBase64URL`.
+   §4.1's naming ruling binds: `TestExactFullPageHasNoNextCursor` **is**
+   `TestHasMoreDetection`, not a second id; and an inconsistent `k`/`id`
+   cursor has exactly one oracle across A0/A1/A2 — `validation` (400), never
+   "empty page or `validation`".
+2. **WP-13 `internal/secretscan`** (∥, imports only `errs`) — A2-9
+   (`contracts/A2-graph.md` lines 716–804: the closed rule table, the P-46 rule
+   ids, A2-9.5's "name the field and the rule id, never the value, a prefix or
+   its digest") plus A1-4.9 (`contracts/A1-events.md`, from line 439). Test ids:
+   `TestEveryRuleIDMatchesItsCorpusValue`,
+   `TestNoFalsePositiveOnBenignCorpus` (hostnames, CIDRs, argv, hex digests of
+   artifacts), `TestErrorMessageNamesFieldAndRuleIDOnly`,
+   `TestEntropyRuleIsDeterministic`. It unblocks six named secret-free-
+   serialization tests in A1/A2 and A0-3.4's two ids. Its brief is the only one
+   that quotes A2, and it must not read A0's other sections.
+3. Then the domain packages in the principal review §4's order: WP-09…WP-12
    (`events`: envelope/taxonomy, chain primitives, validation, verification
-   walk), WP-14…WP-16 (`graph`), WP-17 store seams, WP-18 ingest mapping,
-   WP-19…WP-21 the shared contract suite per owner package, WP-22
-   `store/postgres` (pgx vendored, ADR-0010, integration opt-in per DESIGN §8 —
-   it owns `TestIDOrderingMatchesByteOrderCollateC`).
+   walk — WP-10 owns A0-5.4's `recorded_at` clamp and the two clamp test ids),
+   WP-14…WP-16 (`graph`), WP-17 store seams, WP-18 ingest mapping, WP-19…WP-21
+   the shared contract suite per owner package, WP-22 `store/postgres` (pgx
+   vendored per ADR-0010, integration opt-in per DESIGN §8 — it owns
+   `TestIDOrderingMatchesByteOrderCollateC`, backlog §6).
+4. Two debts to place when the domain types land: **A0-2.6's "no float field in
+   a canonicalized type"** is enforceable only by review (`json.Marshal(float64(2))`
+   emits `2`), and **UTF-8 validation of string fields** has no owner yet
+   (`CanonicalValue` cannot do it — `encoding/json` substitutes U+FFFD first).
+   Both are standing questions in `sessions/BACKLOG.md`.
 5. Design sessions still queued: **A3 stage views** (unblocked by D4; owns the
    real A0-7.10 composition rule and must budget bytes for ADR-0022's
    provenance grade), backlog §3 UI, §4 Pi node, §5 agent loop, §6 persistence,
-   §7 security work items, §8 SSO, §9 CI remainder (image build/pin/sign, full
-   SHA action pinning), §10 observability (incl. the attribute-redaction seam),
-   §11 model benchmarking/drift.
+   §7 security work items, §8 SSO, §9 CI remainder (image build/pin/sign,
+   full-SHA action pinning), §10 observability (incl. the attribute-redaction
+   seam), §11 model benchmarking/drift.
 
 ## 3. Definition of done for the next session
 
-- [ ] PR #4 merged, branch deleted locally and remotely, local `main`
+- [ ] PR #6 merged, branch deleted locally and remotely, local `main`
       fast-forwarded, CI green on `main`.
-- [ ] WP-07 reviewed independently and merged or opened as its own PR: every
-      A0-2.17 vector byte-exact, the whole rejection list covered by
-      `TestRejections`, both bounds (32 / 1 MiB) tested **by asserting their
-      effect** (AGENTS.md: never by removing them).
+- [ ] WP-08 reviewed independently and merged or opened as its own PR: every
+      A0-4 MUST covered, cursor round-trip byte-stable, the standard alphabet
+      and `=` padding rejected (A0-8.6), and an over-max `limit` **rejected,
+      never clamped** (A0-4.5).
 - [ ] `gofmt -l`, `go vet ./...`, `go build ./...`, `go test ./...`,
       `go test -race ./...` green under `ulimit -v` / `GOMEMLIMIT` / `-timeout`;
       `go.mod` still empty except pgx (ADR-0010); `verify-vectors.py` still
-      `PASS 52 / FAIL 0`.
+      `PASS 52 / FAIL 0` if `contracts/` was touched.
 - [ ] Session tracker + `sessions/BACKLOG.md` + this file updated, usage
       refreshed, PR labelled `agent-built`, PR URL verified to exist.
 
@@ -120,24 +123,38 @@ Use the `start-session` ritual (fixed order: SPEC → `adr/` → DESIGN →
 - **A child's deliverable must be a file written incrementally**, never its
   final message; require a compiling skeleton in the first 10 minutes and a
   "stop and make it coherent at minute N−10" rule.
-- **Treat a child's own progress log as untrusted**: re-audit the file state
+- **Treat a child's own progress log as untrusted** — re-audit the file state
   before briefing the next pass.
-- **Treat your own brief as untrusted too** (new 2026-09-24): three
-  implementers found four defects in the principal's briefs and in the frozen
-  contract in one session — a wrong byte count, a wrong claim about Go's
-  formatting, an impossible test row, a false rationale. A child that surfaces
-  a bad instruction instead of following it is succeeding.
+- **Treat your own brief as untrusted too.** On 2026-09-24 children found six
+  defects in the principal's input: a wrong byte count and a false rationale in
+  the frozen contract (→ errata 16 and 17), Go's `.000` directive truncating
+  rather than rounding, an impossible test row, an unachievable "before
+  canonicalization" reading (→ erratum 18), and a **self-contradictory remedy**
+  whose two properties disagreed on `{A, a}` and would have broken A0-2.5's own
+  example. A specification that names two properties must be checked for a case
+  where they conflict, and a reviewer's suggested code is a proposal, not a
+  ruling.
 - **A child's completion preview truncates mid-finding.** Read the full report
   from `~/.pi/agent/sessions/<parent>/<child-run>/run-0/session.jsonl`; `/tmp`
   is not durable (2026-09-21).
-- **Brief reviewers for the tools they have** (new 2026-09-24): the builtin
-  `reviewer` has no shell, so it cannot run the gates — say so, run them
-  yourself, and forbid filesystem-wide searches (one reviewer burned its whole
-  budget in `find /` and lost its report).
-- **One writer per file/directory.** Three parallel lanes on three disjoint
-  directories worked twice; paired blocks must be byte-identical and verified
-  afterwards.
+- **Brief reviewers for the tools they have.** The builtin `reviewer` has no
+  shell (it cannot run the gates) and once burned its whole budget in `find /`.
+  Its launch guard also rejects dense review briefs as "implementation work" —
+  it fired three times on the cjson review and not once on the shorter ones.
+  `sleipnir-architect` has a shell, passes the guard, and can recompute vectors
+  independently; it can write, so the brief must forbid it and `git status`
+  must be checked afterwards.
+- **An assertion that cannot fail is not a test.** Three separate findings today
+  were the same defect: an import allow-list that never required `crypto/rand`,
+  a truncation corpus that left the zero-budget walk-back path uncovered, and a
+  source scan hardcoding the parameter names `a`/`b` so a rename would vacate
+  it. Ask of every guard: what edit would make this pass while breaking the rule?
+- **One writer per file.** Two PRs appending to the same numbered list (A0 §6)
+  is a guaranteed conflict — erratum 18 was ruled during WP-07 and still went to
+  the branch that already owned §6.
 - **Never prove a negative test by removing the bound and running it**
   (2026-09-21: 11.4 GB RSS, kernel OOM, the whole WSL VM down). Assert the
-  bound's effect. Now an `AGENTS.md` rule.
-- Verify every published vector mechanically before merging.
+  bound's effect, or mutate a copy outside the repo and delete it — which is
+  what the cjson fix lane did, and reported.
+- Verify every published vector mechanically before merging, and prefer an
+  oracle the code under test did not produce.

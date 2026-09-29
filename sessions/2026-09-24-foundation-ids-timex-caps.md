@@ -39,11 +39,14 @@
 ## Branch and PR
 
 `foundation/ids-timex-caps` (from `main` @ `4bdaec8`) → **PR #4**,
-<https://github.com/daten-krake/Sleipnir/pull/4>, label `agent-built`, verified
-OPEN with 16 files at session close. **CI green on the PR** (run `36038464860`,
-59 s — `detect`, `go-gates` incl. the ADR-0010 dependency check and `-race`, and
-`contracts` recomputing all 52 vectors because this branch touches
-`contracts/`). Eight commits:
+<https://github.com/daten-krake/Sleipnir/pull/4>, label `agent-built`,
+**MERGED 2026-09-24 as `dd5837c`**. **CI green** (run `36038464860`, 59 s —
+`detect`, `go-gates` incl. the ADR-0010 dependency check and `-race`, and
+`contracts` recomputing all 52 vectors because the branch touched `contracts/`).
+A ninth commit, `c3950df`, added A0 §6 item 18 after the PR was opened — the two
+errata WP-07 motivated, committed here rather than on `foundation/cjson` because
+two PRs appending to the same numbered §6 list is a guaranteed conflict; PR #4
+carries a comment saying so. Nine commits:
 
 | Commit | Concern |
 |---|---|
@@ -56,6 +59,12 @@ OPEN with 16 files at session close. **CI green on the PR** (run `36038464860`,
 | `5142525` | A0-5.3 / §4.1 errata (§6 item 17) |
 | `a0ebed0` | WP-05 review fixes (the MUST FIX and the false nil-Clock premise) |
 | `b133f8f` | session close: tracker, backlog, `next_steps.md`, the AGENTS.md delegation bullet |
+| `c3950df` | A0-2.11 / A0-2.14 errata (§6 item 18), ruled during the cjson half |
+
+Post-merge housekeeping (2026-09-24): local `main` fast-forwarded to `997bbcc`,
+both feature branches deleted locally **and** on the remote, and the gates
+re-run on `main` — `gofmt -l` clean, `go vet`, `go build`, `go test` green on all
+six packages, `verify-vectors.py` PASS 52 / FAIL 0, all three §6 errata present.
 
 ## Done this session
 
