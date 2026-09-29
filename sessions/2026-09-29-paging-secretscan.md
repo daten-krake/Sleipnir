@@ -233,6 +233,6 @@
 
 | total input | uncached input | cache read | cache write | output | reasoning |
 |---|---|---|---|---|---|
-| 15263402 | 379434 | 14883968 | 0 | 107458 | 48380 |
+| 19664812 | 406316 | 19258496 | 0 | 120475 | 50126 |
 
 _(run `sessions/update-usage.sh sessions/2026-09-29-paging-secretscan.md` at session end)_
