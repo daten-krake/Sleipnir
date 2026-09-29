@@ -148,6 +148,14 @@ func originViaWrapf() error {
 
 var errTestSentinel = errors.New("sentinel root cause")
 
+// originViaGeneric is one frame from the constructor like the helpers above,
+// but it is a generic instantiation: runtime names its body
+// "errs_test.originViaGeneric[...]". callerOp MUST strip the bracketed
+// type-argument list so the op is the component.Function ADR-0019 §2 requires.
+func originViaGeneric[T any](v T) error {
+	return errs.Newf(errs.Validation, "building a page of %T", v)
+}
+
 func TestNewCapturesOriginFunction(t *testing.T) {
 	tests := []struct {
 		name string
@@ -176,6 +184,27 @@ func TestNewCapturesOriginFunction(t *testing.T) {
 				t.Errorf("Error() = %q, want prefix %q", err.Error(), tt.op+": ")
 			}
 		})
+	}
+}
+
+// TestOpOfStripsGenericTypeArguments pins callerOp's bracket strip. Non-vacuity:
+// deleting the IndexByte('[') cut in callerOp makes both instantiations render
+// "errs_test.originViaGeneric[...]" and this test fails on the first case.
+func TestOpOfStripsGenericTypeArguments(t *testing.T) {
+	const want = "errs_test.originViaGeneric"
+	// Two different instantiations must render one op: a per-row-type op is not
+	// greppable, and ADR-0019 §2 asks for component.Function, not a shape name.
+	cases := []error{
+		originViaGeneric(struct{ ID string }{}),
+		originViaGeneric(42),
+	}
+	for i, err := range cases {
+		if got := errs.OpOf(err); got != want {
+			t.Errorf("case %d: OpOf() = %q, want %q", i, got, want)
+		}
+		if got := err.Error(); !strings.HasPrefix(got, want+": ") {
+			t.Errorf("case %d: Error() = %q, want prefix %q", i, got, want+": ")
+		}
 	}
 }
 
