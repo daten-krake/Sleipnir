@@ -186,6 +186,17 @@ func callerOp() string {
 		return "unknown"
 	}
 	name := fn.Name()
+	// Drop a generic instantiation's type-argument list before dropping the
+	// import path: runtime names the body "paging.NewPage[...]", which is not a
+	// component.Function (ADR-0019 §2), and a type argument can itself contain a
+	// '/' so the path cut would otherwise land inside the brackets. A method on
+	// a generic type renders as "(*pkg.T[...]).M" — there the brackets are not
+	// trailing, so leave that form alone rather than truncating it mid-name.
+	if i := strings.IndexByte(name, '['); i >= 0 {
+		if j := strings.IndexByte(name, '('); j < 0 || j > i {
+			name = name[:i]
+		}
+	}
 	// Keep component.Function: drop the import path, which ends at the last '/'.
 	if i := strings.LastIndexByte(name, '/'); i >= 0 {
 		name = name[i+1:]

@@ -768,6 +768,31 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   `cidr`, `transport`, every `addresses` entry, every edge field — and every
   `attrs` value. Provenance is scanned too (A2-5.8).
 
+  **Platform-minted exemption** (_erratum 2026-09-29, §6 item 15_): a field
+  whose value the *platform minted* is not scanned. A value is platform-minted
+  iff it passes `ids.Valid(k, v)` for the A0-1.2 kind `k` the owning contract
+  declares for that field, or the field is one the platform stamps and a caller
+  MAY NOT supply (A1-2.3). The exemption is decided by the **caller**, which
+  owns the fixed key set (A1-4.1, A2-4.6) and so knows each field's declared id
+  kind; `internal/secretscan` is unchanged and this rule table stays closed and
+  byte-identical. A hostile worker cannot reach an exempt field: A1-2.3 rejects
+  a caller-supplied platform-stamped field, and `ids.Valid` is byte-exact
+  (A0-1.5), so an exempt value is provably a registered prefix plus 26 Crockford
+  base32 characters and nothing else — it cannot carry a PEM block, a JWT, a
+  cloud key id or a `key: value` assignment. Without the exemption
+  `SEC-ENTROPY` rejects **28.4 %** of the platform's own `slp_node_` ids
+  (measured 2026-09-29: 5 671 of 20 000 from `ids.New(ids.AgentNode)`;
+  `slp_node_` + 26 = 35 characters is the only A0-1.2 form reaching the ≥ 32
+  window, and `_` is inside the rule's alphabet, so the whole id is one run),
+  together with container and network names built from an id body
+  (`sleipnir-worker-<26 chars>` H = 4.62, `slp-run-<26 chars>-net` H = 4.56).
+  A1's envelope key 6 *is* `node_id`, so roughly one Pi-node event in four
+  would be rejected at ingest (A1-4.9). What the rule still catches unaided:
+  64-char lowercase hex digests do **not** trip it (H ≤ 4.0, and
+  `sha256:<64hex>` splits at the colon), nor 32-hex MD5 shapes (H = 3.39),
+  RFC 3339 timestamps or argv — none reaches a 32-character run at 4.5
+  bits/char.
+
   The corpus planted by `TestEventSecretFreeSerialization` and
   `TestGraphSecretFreeSerialization` is exactly one value per rule id and lives
   in the shared suite; a rule added later adds a corpus entry.
@@ -1783,6 +1808,38 @@ with their rulings, not left as open asks.
 12. **A2-8.5 — blacklisted discovery: recorded, not refused (Decided — product owner, 2026-09-21, PR #2 item D7).** The Freeze stores the node with `quarantine_reason:"blacklisted"`, never releasable, never in a planning view, and chains `graph_node_quarantined{blacklist_match}` — "we saw the forbidden target and did not touch it". The alternative reading of ADR-0016 §2 (refuse the write, store nothing about a forbidden system) is defensible and minimizes stored data; confirmed by the product owner 2026-09-21 (PR #2 item D7), because refusing the write would make the near-miss unprovable in a customer report.
 13. **A2-2.7 / A2-5.6 — deviation from Q2: SIGNED (product owner, 2026-09-21, PR #2 item D2 → ADR-0022).** Q2 records "Finding carries confidence". A2 implements that as the mandatory provenance grade `observed · inferred · verified` on every node and edge instead of a finding field, so a grade is always tied to a referenced event (ADR-0016 §1: evidence, not opinion). This **changes a locked decision**; the product owner signed it on 2026-09-21, which is what lets A2 flip to Frozen; ADR-0022 records the change to Q2. With A2-4.7's bounded provenance list `verified` is now reachable: it requires a second, independent observation.
 14. **Decided (product owner, 2026-09-21, PR #2 item D6) — operator release of quarantine is removed.** `operator_release` is deleted from A1's `quarantine_kind` enum and A2 provides no release operation: an `out_of_scope` node is released **only** by an operator scope change and the recomputation it causes (A2-8.5, ADR-0016 §2 — an out-of-scope node can never be a target of a planned action). `operator_quarantine` (tightening) is kept, and a `blacklisted` node is never releasable. If the product owner wants a manual release it MUST be a new ADR amending ADR-0016 §2 and MUST require the target to be inside the widened allowlist at release time.
+
+15. **A2-9.4 — ERRATUM (product owner decision 2026-09-29; narrows the scanned
+    field set, the rule table itself is unchanged).** Found by the WP-13
+    implementer writing `internal/secretscan`, escalated by its independent
+    review, and measured against the real packages by the principal:
+    `SEC-ENTROPY` as written rejects **28.4 %** of the platform's own
+    `slp_node_` ids (5 671 of 20 000 from `ids.New(ids.AgentNode)`, e.g.
+    `slp_node_01m3pqy611zczgaf4ajy4qkbxq` at H = 4.5147), plus container and
+    network names built from an id body. `slp_node_` + 26 = 35 characters is the
+    only A0-1.2 form reaching the rule's ≥ 32 window, and `_` is inside its
+    alphabet, so an entire node id is one high-entropy run. Since A1's envelope
+    key 6 is `node_id` and A1-4.9 mandates the scan over every string field of
+    an append payload, roughly one Pi-node event in four would have been
+    rejected at ingest — not collateral damage of the kind §6 item 10 accepts
+    for a bare 32-hex token in prose, but the platform rejecting its own
+    primary key. Three remedies were measured and refused: raising the window
+    to ≥ 40 exempts `slp_node_` (35) and `slp-run-…-net` (38) but **not**
+    `sleipnir-worker-<body>` (42, H = 4.62), and loses every 32–39 character
+    secret; dropping `_` and `-` from the alphabet fixes all three shapes but
+    blinds the rule to bare base64url blobs, which is exactly what it exists
+    for; accepting it breaks the remote-agent path (ADR-0013, SPEC §4.4). The
+    product owner ruled the fourth: **exempt platform-minted values**, decided
+    by the caller from the field's declared A0-1.2 kind or A1-2.3's
+    platform-stamped set, with the rule table left byte-identical and
+    `internal/secretscan` unchanged. The exemption is provably unreachable by a
+    hostile worker (A1-2.3 rejects caller-supplied platform-stamped fields;
+    `ids.Valid` is byte-exact), so nothing is weakened against untrusted input.
+    Recorded in A2-9.4 and mirrored by A1-4.9. This is an erratum rather than
+    an ADR because no MUST, rule id, regexp, threshold or window changed — only
+    the set of fields the unchanged rules run over. **Blocks WP-11 and WP-15**,
+    which wire the scan into event and graph validation and MUST implement the
+    caller-side exemption.
 
 ### A0 amendment requests
 
