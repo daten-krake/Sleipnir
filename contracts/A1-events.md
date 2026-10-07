@@ -790,13 +790,18 @@ absorbed" — including every offline-node replay (ADR-0013).
     platform-computed (A1-4.2): a caller MUST NOT supply one, and no payload
     timestamp is ever a `*_claimed_at` field — the only client-supplied time in
     an event is the envelope's `occurred_claimed_at` (A1-1.4, A0-5.7).
-    `Tests: TestNoTimeTimeInCanonicalizedTypes, TestTimestampFieldsAreStrings`.
+    `Tests: TestNoTimeTimeInCanonicalizedTypes` (its `EnvelopeTimestampsAreStrings`
+    and `PayloadTimestampFieldsAreStrings` subtests are the oracle for the
+    string-timestamp rule; the id `TestTimestampFieldsAreStrings` formerly named
+    here was registered nowhere — struck by §6 item 23, 2026-10-07).
   - **Integers** are within A0-2.6's `[-(2^53-1), 2^53-1]`, with the suffix
     semantics of A0-8.2 (`*_ms`, `*_bytes`) and the sign rules of A1-4.2
     (`exit_code` may be `-1`; counts, sizes and durations may not be
     negative). Transcription rule for `:int` — **`int64`** for every `*_ms`,
-    `*_bytes`, count and `seq` field; **`int`** only where A1-4.2 declares a
-    range (`exit_code`). A float in a payload is `validation` (A1-4.8).
+    `*_bytes`, count and `seq` field; **`int`** only for `exit_code`, the one
+    field A1-4.2 gives a *signed* range — an unsigned bound like `attempt ≥ 1`
+    does not make a field `int` (§6 item 22, 2026-10-07). A float in a payload
+    is `validation` (A1-4.8).
     Upstream-reported counters (`llm_call.prompt_tokens`, `completion_tokens`)
     are integers of untrusted *origin* but are not prose, so A1-4.4's marking
     does not apply to them; a consumer MUST NOT treat them as billing truth.
@@ -2027,30 +2032,23 @@ type Payload interface {
 	Validate() error // A1-4.2 obligations + A1-4.5 caps; errs kind "validation"/"summary_too_large"
 }
 
-// A1-local cap constants (A1-4.5, mechanism R everywhere). Q4 constants come
-// from A0-7.1 and are not redeclared; §6 asks A0 to adopt these into its table.
-const (
-	ProseLongMaxBytes   = 2048 // command, task_description, result_summary, revert_action
-	ProseMediumMaxBytes = 512  // reason, detail, action_summary, message, entry
-	TargetMaxBytes      = 256  // target, attempted_target, blacklist_entry
-	LabelMaxBytes       = 128  // origin, container_ref, network_name, media_type, model/endpoint/target_name, old/new_value
-	VersionMaxBytes     = 64   // tool_version
-	KindNameMaxBytes    = 32   // node_kind, edge_kind, risk_tier (A2 owns the values)
-	DigestMaxBytes      = 256  // image_digest
-	EvidenceRefsMax     = 8    // evidence_refs count (A1-4.7)
-	EventRefsMax        = 64   // revert_event_ids / non_revertable_event_ids count
-	ExitCodeMin         = -1   // -1 = no exit status (A1-4.2)
-	ExitCodeMax         = 255
+// UntrustedFields returns k's A1-4.4 "*" field names in A1-3.3 field order —
+// normative: transcribed from the A1-4.4 table, part of the digest definition
+// (A1-5.2). fields is non-nil for every known kind (empty for the 23 kinds
+// with no starred field); ok is false when k is not in the closed taxonomy
+// (A1-3.1) — a platform defect at the call site, never a client error, since
+// callers validate the kind first. The returned slice is a fresh copy, so the
+// registry is unmutable by callers (§6 item 20, 2026-10-07; supersedes the
+// P-25 one-value proposal).
+func UntrustedFields(k Kind) (fields []string, ok bool)
 
-	// EventMaxCanonicalBytes bounds the canonical bytes of any event: 6x the
-	// largest decoded prose cap (A0-2.7 worst-case \u00xx expansion) plus
-	// envelope overhead. A platform invariant asserted at composition, not a
-	// client-facing cap (A1-4.5).
-	EventMaxCanonicalBytes = 32768
-
-	// IdempotencyKeyMaxBytes bounds the A1-7.6 client dedup key.
-	IdempotencyKeyMaxBytes = 64
-)
+// Cap constants: A1 declares none of its own (A1-4.5). Every cap this contract
+// cites is a row of the A0-7.1 registry with its single Go definition in
+// internal/caps (A0-7.2). The former "A1-local cap constants" block here
+// duplicated that registry and had already drifted (VersionMaxBytes vs the
+// registry's ToolVersionMaxBytes; a DigestMaxBytes comment colliding with
+// A1-4.5's separate 64-char Digests class) — struck by §6 item 21,
+// 2026-10-07. WP-11 imports internal/caps.
 
 // Chain constants (A1-5.3, A1-5.5).
 const (
@@ -2278,7 +2276,7 @@ type GraphEdgeRetractedPayload struct {
 
 // QuarantineRecomputedPayload — kind quarantine_recomputed (added for A2-8.5).
 type QuarantineRecomputedPayload struct {
-	Trigger          string `json:"trigger"` // enum scope_changed|blacklist_changed|policy_changed
+	Trigger          string `json:"trigger"` // enum scope_changed|blacklist_changed|node_written|edge_written
 	TriggerEventID   string `json:"trigger_event_id"`
 	NodesEvaluated   int64  `json:"nodes_evaluated"`
 	NodesQuarantined int64  `json:"nodes_quarantined"`
@@ -3093,6 +3091,54 @@ assumed to be already granted, and A1's own numbering of amendment requests
     regexp, threshold or window changed. **Blocks WP-11**, which wires the scan
     into `internal/events` validation and MUST implement the caller-side
     exemption.
+
+19. **§4.1 sketch — ERRATUM (product owner decision 2026-10-07, WP-09
+    delivery).** The sketch's `QuarantineRecomputedPayload.Trigger` comment
+    said `// enum scope_changed|blacklist_changed|policy_changed`, stale
+    against normative A1-3.3 and the prose after the tables: the closed list
+    is `scope_changed · blacklist_changed · node_written · edge_written`
+    (A2-8.5, A2-8.2). `policy_changed` occurs nowhere else in A1 (the kind is
+    `engagement_policy_changed`). The comment is corrected; the normative
+    text was and stays the authority — `internal/events` shipped the 4-value
+    list, and the WP-09 reviewer's independent enum pass (33/33 byte-exact)
+    found no other stale enum comment in the package.
+20. **§4.1 sketch — ERRATUM (product owner decision 2026-10-07, WP-09
+    delivery).** A1-4.4 said "this table is what `UntrustedFields` returns,
+    §4.1" but §4.1 never declared the function — the P-25 wording
+    (`func UntrustedFields(k Kind) []string`) was a review recommendation
+    that never entered the contract. §4.1 now declares the shipped two-value
+    form `func UntrustedFields(k Kind) (fields []string, ok bool)`: the bool
+    distinguishes "kind has no starred field" (23 of 42) from "not a kind at
+    all", so a caller computing the digest-critical `untrusted` flag can
+    never silently treat a nonexistent kind as unstarred; `fields` is non-nil
+    for every known kind and a fresh copy. Both properties are test-pinned
+    (`internal/events`, mutation-proven).
+21. **§4.1 sketch — ERRATUM (product owner decision 2026-10-07, WP-09
+    delivery).** The sketch's "A1-local cap constants" block contradicted
+    A1-4.5 ("A1 cites the registry names … and declares no constant of its
+    own") and duplicated the A0-7.1 registry whose single Go definition is
+    `internal/caps` (A0-7.2 makes any second definition a defect). It had
+    already drifted: `VersionMaxBytes` vs the registry's `ToolVersionMaxBytes`,
+    and a `DigestMaxBytes = 256` comment colliding with A1-4.5's separate
+    64-char Digests class. The block is struck and replaced by a pointer to
+    the registry; AM-2's constants list is historical (the request was
+    granted — the registry rows exist) and the registry's names govern.
+    `internal/events` declares no cap constant; WP-11 imports `internal/caps`.
+22. **A1-4.12 — ERRATUM (product owner decision 2026-10-07, WP-09
+    delivery).** "`int` only where A1-4.2 declares a range (`exit_code`)" was
+    ambiguous: A1-4.2 also declares `attempt ≥ 1`. Clarified to "`int` only
+    for `exit_code`, the one field A1-4.2 gives a *signed* range". The shipped
+    transcription already followed the literal text (`attempt`, `http_status`,
+    `containers_killed` → `int64`; `exit_code` → `int`) and needs no change;
+    the clarification keeps WP-11's validation tables from re-tripping.
+23. **A1-4.12 Tests line — ERRATUM (product owner decision 2026-10-07, WP-09
+    delivery).** `TestTimestampFieldsAreStrings` was named by A1-4.12 but
+    registered nowhere — neither §4.4 nor any WP row carried it, the
+    one-test-two-names defect A0 §6 item 23 fixed for A0 (2026-09-29). The id
+    is struck; the behaviour is the registered
+    `TestNoTimeTimeInCanonicalizedTypes`'s oracle, shipped as its
+    `EnvelopeTimestampsAreStrings` and `PayloadTimestampFieldsAreStrings`
+    subtests. §4.4 stays the single registry (A0 §6 item 20 precedent).
 
 ### A0 amendment requests
 
