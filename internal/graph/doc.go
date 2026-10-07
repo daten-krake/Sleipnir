@@ -170,7 +170,7 @@
 //     `var ReservedAttrKeys = map[string]bool`; an exported package-level map
 //     is mutable state any package can write (DESIGN §4 forbids it, and
 //     DESIGN outranks the illustrative, "not compiled" sketch). The set
-//     itself is transcribed byte-exactly from A2-6.3 (50 keys, pinned
+//     itself is transcribed byte-exactly from A2-6.3 (51 keys, pinned
 //     against the contract text in tests with a mutation proof) and every
 //     consumer — WP-15's validation, WP-21's contract suite — lives in this
 //     package.

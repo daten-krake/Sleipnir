@@ -312,8 +312,8 @@ func TestAttrsRejectNestedFloatNull(t *testing.T) {
 	parsed := parseReservedAttrKeys(t, contractSlice(t, text, "### A2-6", "### A2-7"))
 
 	t.Run("reserved_set_matches_contract_byte_exactly", func(t *testing.T) {
-		if len(parsed) != 50 {
-			t.Fatalf("A2-6.3 parses to %d reserved keys, want exactly 50: %v", len(parsed), parsed)
+		if len(parsed) != 51 {
+			t.Fatalf("A2-6.3 parses to %d reserved keys, want exactly 51: %v", len(parsed), parsed)
 		}
 		if len(reservedAttrKeys) != len(parsed) {
 			t.Fatalf("package reserved set has %d keys, contract has %d", len(reservedAttrKeys), len(parsed))

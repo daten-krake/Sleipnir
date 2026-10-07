@@ -74,9 +74,11 @@ var attrKeyRE = regexp.MustCompile(`^[a-z][a-z0-9_]{0,39}$`)
 var attrIntRE = regexp.MustCompile(`^-?(0|[1-9][0-9]{0,15})$`)
 
 // reservedAttrKeys is the normative, closed, additive-only reserved set of
-// A2-6.3, transcribed byte-exactly from the contract (50 keys). Membership
+// A2-6.3, transcribed byte-exactly from the contract (51 keys). Membership
 // is byte-exact — no prefix, suffix or substring matching. seq stays reserved
-// even though the graph field is graph_seq (A2-1.4a); operator_id is gone
+// even though the graph field is graph_seq (A2-1.4a); node_id likewise — no
+// A2 field bears the name, but A0-3.6 reserves it platform-wide for the
+// remote agent node (A2 §6 item 19); operator_id is gone
 // with the A2-5.3 rename to user_id; confidence is the A2-5.6 provenance
 // grade's field name.
 //
@@ -101,6 +103,7 @@ var reservedAttrKeys = map[string]bool{
 	"agent_node_id": true, "user_id": true, "tool_id": true, "tool_version": true,
 	"event_id": true, "recorded_at": true, "observed_claimed_at": true,
 	"confidence": true, "graph_node_id": true, "graph_edge_id": true,
+	"node_id": true,
 }
 
 // MarshalJSON emits the bare scalar of the live field (A2-6.1, P-51). A zero

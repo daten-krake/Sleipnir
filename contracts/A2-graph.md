@@ -483,13 +483,14 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   ```go
   // ReservedAttrKeys (A2-6.3): closed list. Membership is byte-exact — no
   // prefix, suffix or substring matching. `seq` stays reserved even though the
-  // graph field is `graph_seq` (A2-1.4a); `operator_id` is gone with the
+  // graph field is `graph_seq` (A2-1.4a); `node_id` likewise, per A0-3.6's
+  // platform-wide reservation (§6 item 19); `operator_id` is gone with the
   // A2-5.3 rename to `user_id`.
   // Shape erratum (§6 item 18, 2026-10-07): internal/graph ships this set
   // UNEXPORTED and read-only — an exported package-level map is mutable
   // cross-package state (DESIGN §4, which outranks this illustrative,
   // not-compiled sketch); the key set below is the norm, the var shape is not.
-  var ReservedAttrKeys = map[string]bool{ /* 50 keys */ }
+  var ReservedAttrKeys = map[string]bool{ /* 51 keys */ }
   ```
 
   `ReservedAttrKeys = {id, engagement_id, seq, graph_seq, kind, label, summary,
@@ -500,8 +501,10 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   target_id, source_kind, target_kind, retracted, principal_kind, run_id,
   job_id, task_id, agent_node_id, user_id, tool_id, tool_version, event_id,
   recorded_at, observed_claimed_at, confidence, graph_node_id,
-  graph_edge_id}` (50 keys). Membership MUST be tested **byte-exactly** — a
-  prefix or substring match MUST NOT be used. _Two places to look for one fact
+  graph_edge_id, node_id}` (51 keys). Membership MUST be tested **byte-exactly** — a
+  prefix or substring match MUST NOT be used. `node_id` is reserved although no
+  A2 field bears the name — A0-3.6's platform-wide reservation (§6 item 19),
+  the same logic that keeps `seq` reserved. _Two places to look for one fact
   is how a report ends up contradicting the graph._
   `Tests: TestReservedAttrKeysRejected`.
 - **A2-6.4** Caps (mechanism R, A2-7): ≤ 16 keys (`AttrsMaxKeys`), ≤ 512 B per
@@ -1870,9 +1873,29 @@ with their rulings, not left as open asks.
     `var ReservedAttrKeys = map[string]bool`; an exported package-level map is
     mutable cross-package state, which DESIGN §4 forbids and DESIGN outranks
     an illustrative, not-compiled sketch. `internal/graph` ships the set
-    unexported and read-only, byte-identical to the 50-key norm below and
+    unexported and read-only, byte-identical to the key-set norm below and
     contract-pinned with a mutation proof; every consumer (WP-15, WP-21) is
-    in-package. The key set itself is unchanged.
+    in-package. The set itself is unchanged by item 18 (item 19 adds one key).
+
+19. **A2-6.3 — ERRATUM (product owner decision 2026-10-07, WP-14
+    delivery; the set grows 50 → 51 keys).** The reserved set carried every
+    other platform id-vocabulary name — `graph_node_id`, `graph_edge_id`,
+    `agent_node_id`, `run_id`, `job_id`, `task_id`, `user_id`,
+    `engagement_id`, even `seq` although the field is `graph_seq` — but not
+    `node_id`, the one name A0-3.6 reserves platform-wide for the remote
+    agent node and A2-1.6/A2-11.4 (`TestNoBareNodeIDInGraphDocuments`) keep
+    out of graph documents. Unreserved, a writer could place an attrs entry
+    `"node_id"` on a served node document with any value — including a `gn_`
+    id, the exact conflation A0-3.6 exists to prevent, and no consumer
+    scanning JSON keys can tell platform field from untrusted attrs data.
+    `node_id` is added, following the `seq` precedent ("reserved even though
+    no field bears the name"). Additive-only (A0-6.5): attrs keys are writer
+    vocabulary, nothing platform-minted uses `node_id` as an attrs key, and
+    nothing depends on accepting one before first launch — after launch the
+    addition would reject a previously-accepted key, which is why it is ruled
+    now. Surfaced by the WP-14 review (E5); the shipped code was
+    contract-compliant — the gap was the contract's. `internal/graph`'s set
+    and its contract-parsed count pin updated in lockstep.
 
 ### A0 amendment requests
 
