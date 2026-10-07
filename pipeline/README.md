@@ -10,6 +10,26 @@ evening, H4 safety-critical deep review.
 Start/stop runs through the **`pipeline-run` skill** (it asks the operator
 how long to run). Manual operation below.
 
+## Context hygiene (owner directive 2026-10-07 — binding)
+
+**After each task, the context is cleared.** Concretely:
+
+- Every task *and every stage* of a task runs in a **fresh child context**:
+  the driver spawns one new `opencode run` per stage (implementer →
+  reviewer → each fix round) and never passes `--session`/`--continue` — no
+  child is ever resumed and nothing carries over between tasks. Do not
+  "optimize" this by continuing a session across stages or tasks.
+- **Durable memory is files, not conversation:** `queue.json` (status),
+  `runs/wp-<id>/` (briefs, logs, report.md, review.md) and the lane branch's
+  commits. The next task's brief is rendered from the queue entry and the
+  report paths — never from a conversation summary. That is why the briefs
+  make the report FILE the deliverable.
+- **No babysitting session:** runs launch detached (`nohup`, §3 below) so no
+  LLM context exists at all while the loop works. Checking on a run is a
+  file read (`driver.sh status`, the loop log, the run reports) — do it from
+  any session, including a brand-new one; never keep a session alive just to
+  watch a loop.
+
 ## Layout
 
 | Path | What |
