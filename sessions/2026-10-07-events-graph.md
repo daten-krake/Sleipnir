@@ -36,10 +36,46 @@
   no-confidence rule and the stale `TestNodeDedupIncludesConfidence` name
   carried into the brief). Briefs pin the closed lists against the contract
   text, not the implementation (next_steps §3 definition of done).
+- **WP-09 lane complete and committed** (`a1438b9`, 21 files, 2422 lines).
+  Principal re-verified independently: gofmt/vet/build/test/`-race` green
+  (`-count=1`), 42 kind consts with zero duplicates, 121 RUN lines (7 ids +
+  114 subtests), `go list -deps` → zero internal imports, tests parse
+  `contracts/A1-events.md` as the oracle, no `"time"` import in production
+  files. Implementer's mutation proof: 8/8 kills on an out-of-repo copy
+  (script preserved in the scratch dir).
+- **Independent WP-09 review launched** (read-only, writing forbidden, scoped
+  commands only, `git status` pinned before/after, own scratch extractor
+  required so the oracle is not shared with the code under test).
 
 ## Decisions
 
-- (none yet)
+- **WP-09 implementation rulings (principal, recorded in `internal/events/doc.go`):**
+  `UntrustedFields(Kind) ([]string, bool)` — the bool separates "no starred
+  fields" (23 kinds) from "unknown kind", fresh-copy return; `AllKinds()`
+  exported (closedness untestable without an enumerator); `Payload.Validate()`
+  declared-but-unimplemented by design (WP-11 owns it; a nil-returning stub
+  would fake a safety path); `exit_code` is the only Go `int`, every other
+  `:int` → `int64` per A1-4.12's literal rule; no cap constants in `events`
+  (A1-4.5: the registry is `internal/caps`, WP-11 imports it); no constructors
+  in this package (`NewEvent` is WP-11's per the §4.1 sketch).
+- **A1 errata candidates surfaced by WP-09 (need product-owner ruling; none
+  blocks the PR):** ① §4.1 sketch line 2281's stale enum comment
+  (`policy_changed`) vs normative A1-3.3/prose 4-value list — normative
+  followed; ② `UntrustedFields` is referenced by A1-4.4 "§4.1" but never
+  declared in the sketch — signature ruled locally; ③ the sketch's A1-local
+  cap-constant block contradicts A1-4.5 + `internal/caps` — should be struck;
+  ④ A1-4.12 names `TestTimestampFieldsAreStrings`, registered nowhere (§4.4
+  and the WP rows both lack it) — behaviour is covered by subtests of
+  `TestNoTimeTimeInCanonicalizedTypes`/`TestPayloadStructsMatchA1Tables`;
+  ⑤ `attempt` → `int64` follows A1-4.12's literal "int only … (exit_code)" —
+  if the intent was "every A1-4.2-ranged field", the clause needs an erratum.
+  Also: P-25's proposed `UntrustedFields` wording (`[]string`, no bool) never
+  landed in §4.1 — the erratum should publish the shipped signature.
+- **A0-2.3 UTF-8 field validation assigned to WP-11** (ingest validation):
+  `cjson.CanonicalValue` cannot enforce it (encoding/json substitutes U+FFFD
+  first), the WP-09 types-only package has no validation surface, and WP-11
+  is the first code that rejects a caller-supplied string. Recorded here so
+  the backlog's "no owner" item closes when WP-11 lands.
 
 ## Open questions carried forward
 
