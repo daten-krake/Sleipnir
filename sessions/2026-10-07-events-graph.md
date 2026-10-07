@@ -75,24 +75,45 @@
   `:int` → `int64` per A1-4.12's literal rule; no cap constants in `events`
   (A1-4.5: the registry is `internal/caps`, WP-11 imports it); no constructors
   in this package (`NewEvent` is WP-11's per the §4.1 sketch).
-- **A1 errata candidates surfaced by WP-09 (need product-owner ruling; none
-  blocks the PR):** ① §4.1 sketch line 2281's stale enum comment
-  (`policy_changed`) vs normative A1-3.3/prose 4-value list — normative
-  followed; ② `UntrustedFields` is referenced by A1-4.4 "§4.1" but never
-  declared in the sketch — signature ruled locally; ③ the sketch's A1-local
-  cap-constant block contradicts A1-4.5 + `internal/caps` — should be struck;
-  ④ A1-4.12 names `TestTimestampFieldsAreStrings`, registered nowhere (§4.4
-  and the WP rows both lack it) — behaviour is covered by subtests of
-  `TestNoTimeTimeInCanonicalizedTypes`/`TestPayloadStructsMatchA1Tables`;
-  ⑤ `attempt` → `int64` follows A1-4.12's literal "int only … (exit_code)" —
-  if the intent was "every A1-4.2-ranged field", the clause needs an erratum.
-  Also: P-25's proposed `UntrustedFields` wording (`[]string`, no bool) never
-  landed in §4.1 — the erratum should publish the shipped signature.
+- **A1 errata ruled by the product owner 2026-10-07 → A1 §6 items 19–23,
+  applied and committed (`3218c30`):** ① stale sketch enum comment
+  (`policy_changed` → the normative 4-value trigger list); ② §4.1 now
+  declares `UntrustedFields(k Kind) (fields []string, ok bool)` (shipped
+  two-value form supersedes P-25's proposal); ③ sketch's A1-local
+  cap-constants block struck (A1-4.5 + `internal/caps`/A0-7.1 govern;
+  WP-11 imports `caps`); ④ A1-4.12 int rule clarified — `int` only for
+  `exit_code`, `attempt`/`http_status`/`containers_killed` stay `int64`;
+  ⑤ `TestTimestampFieldsAreStrings` struck (registered nowhere; behaviour is
+  `TestNoTimeTimeInCanonicalizedTypes`' shipped subtests; §4.4 stays the
+  single registry). Gates after the edit: `verify-vectors.py` PASS 52 /
+  FAIL 0, events suite green against the edited oracle, no control characters
+  introduced. The stale "39" in the principal-review row/P-26 is handled per
+  precedent: the dated review document stays untouched, the reconciliation
+  travels in the tracker/next_steps and the WP-11 brief.
+- **ADR-0022 erratum ruled by the product owner 2026-10-07 (application
+  pending until the WP-14 reviewer finishes reading the ADR — do not move a
+  reviewer's oracle mid-review):** an erratum note inside the Accepted ADR
+  (ADR-0019 §3 precedent: decision text unchanged, nothing superseded)
+  recording that the provenance grade lives in the append-only provenance
+  entry, **outside** the content fingerprint: frozen A2-4.6 excludes
+  provenance from the 20-key document, A2-4.7's dedup collapse appends
+  provenance without changing `content_hash`, and §4.2's published vectors
+  (independently recomputed this session) carry no `confidence` key. The
+  bullet's intent — a grade cannot be silently changed — is discharged by
+  provenance being append-only, not by digest inclusion. WP-14's shipped
+  A2-4.6 behaviour stands.
+- **A2 editorial errata ruled by the product owner 2026-10-07 (application
+  pending, same reason):** ① A2-7.1's stale "(A2-local)" markers on the four
+  constants the A0-7.1 registry/`internal/caps` owns (only
+  `ProvenanceMaxEntries` is genuinely A2-local); ② §4 sketch import header
+  gains `timex` (A2-5.3 needs A0-5.3; one-implementation principle); ③ §4
+  sketch records that `ReservedAttrKeys` ships unexported (an exported
+  package-level map is mutable cross-package state, DESIGN §4).
 - **A0-2.3 UTF-8 field validation, events half → WP-11** (ingest validation):
   `cjson.CanonicalValue` cannot enforce it (encoding/json substitutes U+FFFD
   first), the WP-09 types-only package has no validation surface, and WP-11
   is the first code that rejects a caller-supplied string.
-- **ESCALATED — ADR-0022 vs frozen A2-4.6 (product-owner ruling required):**
+- **RESOLVED — ADR-0022 vs frozen A2-4.6 (ruled, see below):**
   ADR-0022's Decision (lines ~90–91) says the provenance grade is "**inside**
   the content fingerprint (A2-4.8), so a grade cannot be changed without a
   revision". Frozen A2-4.6 says provenance "is not part of the document at
@@ -101,11 +122,10 @@
   published vectors (independently recomputed this session) contain no
   `confidence` key. The two cannot both hold. WP-14 shipped A2-4.6's
   behaviour — the only reading under which the published vectors and the
-  dedup semantics survive — and the principal endorses that pending ruling.
-  Recommended: a spelling-of-the-record **erratum note inside ADR-0022**
-  (precedent: ADR-0019 §3's amendment note — decision text unchanged, no new
-  ADR, nothing superseded). Formally an Accepted ADR outranks a contract
-  (AGENTS.md), so this is the owner's call, not the principal's.
+  dedup semantics survive — and the product owner ruled 2026-10-07: an
+  erratum note inside the Accepted ADR (ADR-0019 §3 precedent — decision
+  text unchanged, no new ADR, nothing superseded); see the ruling bullet
+  below.
 - **A2 errata candidates surfaced by WP-14 (editorial, none blocking):**
   ① A2-7.1's "(A2-local)" markers on four constants already owned by the
   A0-7.1 registry/`internal/caps` (stale against AM-2's acceptance; A0-7.2
