@@ -1,28 +1,25 @@
 #!/usr/bin/env bash
-# Refresh the token-usage table of a session tracker file from the live pi session log.
-# Usage: ./sessions/update-usage.sh <session-file.md> [session-jsonl]
+# Refresh the token-usage table of a session tracker file from the OpenCode session API.
+# Usage: ./sessions/update-usage.sh <session-file.md> <opencode-session-id>
 set -euo pipefail
 
-FILE="${1:?usage: update-usage.sh <session-file.md> [session-jsonl]}"
-LOG="${2:-${PI_SESSION_FILE:-}}"
-[ -n "$LOG" ] || { echo "no session log: pass path or set PI_SESSION_FILE" >&2; exit 1; }
-[ -f "$LOG" ] || { echo "session log not found: $LOG" >&2; exit 1; }
+FILE="${1:?usage: update-usage.sh <session-file.md> <opencode-session-id>}"
+SESSION="${2:?usage: update-usage.sh <session-file.md> <opencode-session-id>}"
 
-LINE=$(python3 - "$LOG" <<'EOF'
+JSON=$(opencode api get "/api/session/${SESSION}")
+
+LINE=$(python3 - "$JSON" <<'EOF'
 import json, sys
-t = {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheWrite': 0, 'reasoning': 0}
-for l in open(sys.argv[1]):
-    try:
-        d = json.loads(l)
-    except Exception:
-        continue
-    u = (d.get('message') or {}).get('usage') or d.get('usage')
-    if not u:
-        continue
-    for k in t:
-        t[k] += u.get(k, 0) or 0
-total_in = t['input'] + t['cacheRead'] + t['cacheWrite']
-print(f"| {total_in} | {t['input']} | {t['cacheRead']} | {t['cacheWrite']} | {t['output']} | {t['reasoning']} |")
+d = json.loads(sys.argv[1])
+s = d.get('data') or d
+t = s.get('tokens') or {}
+c = t.get('cache') or {}
+inp = t.get('input', 0) or 0
+cr = c.get('read', 0) or 0
+cw = c.get('write', 0) or 0
+out = t.get('output', 0) or 0
+rea = t.get('reasoning', 0) or 0
+print(f"| {inp + cr + cw} | {inp} | {cr} | {cw} | {out} | {rea} |")
 EOF
 )
 
