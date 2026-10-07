@@ -30,7 +30,7 @@
 // A2-1…A2-6 mandates Scan inside the types package) · internal/policy
 // (A2-8.2: graph never imports policy) · stdlib time (timestamps are A0-5.1
 // strings; no time.Time appears in any served type). Proved mechanically by
-// `go list -deps internal/graph | grep daten-krake`.
+// `go list -deps ./internal/graph | grep daten-krake`.
 //
 // # Clauses implemented here
 //
@@ -73,6 +73,29 @@
 //     preserves Type (P-51); UnmarshalJSON rejects nested values, floats,
 //     null, lone surrogates, malformed and reserved keys with validation.
 //   - A2-6.5 — attrs is part of the fingerprint (vectors F1 vs F3 lock it).
+//
+// # Disposition of the row's remaining clauses (by number)
+//
+//   - A2-1.1 — per-engagement property graph in PostgreSQL behind the store
+//     seam: this package is its type layer (no I/O, no store, no query
+//     language, no traversal API — Q1); persistence → WP-17/WP-22.
+//   - A2-1.3 — content immutability: no content setter exists on Node or
+//     Edge by construction; the four mutable fields (quarantined,
+//     quarantine_reason, report_excluded, retracted) change only through the
+//     seam mutators, and the conflict enforcement is the write path's →
+//     WP-15/WP-17.
+//   - A2-1.9 — no merge operation: discharged by absence — no merge kind,
+//     method or field exists anywhere in this package; adding one needs an
+//     ADR.
+//   - A2-5.5 — observed_claimed_at drives no ordering, supersession,
+//     quarantine, expiry or digest: the digest half is implemented here (none
+//     of the 20 contentDoc keys is a timestamp; the field rides only inside
+//     Provenance and never enters CanonicalContent); the ordering half
+//     (graph_seq/recorded_at) belongs to the write path → WP-15/WP-18.
+//   - A2-6.4 — attrs caps (AttrsMaxKeys/AttrValueMaxBytes/AttrsTotalMaxBytes,
+//     mechanism R, measured on the A0-2 canonical form): registry rows with
+//     their single Go definition in internal/caps; enforcement at A2-10.2
+//     step 8 → WP-15, which is why this package imports no caps.
 //
 // # Clauses deliberately NOT implemented here (who owns them)
 //
@@ -127,18 +150,21 @@
 //     provenance. An Accepted ADR outranks a contract, but this ADR bullet
 //     is factually inconsistent with the frozen A2 it cites and with the
 //     vectors it would invalidate; the vectors are the authority the WP-14
-//     brief pins. ESCALATED: the principal should decide whether ADR-0022
-//     needs an erratum or A2-4.6 an amendment; until then the shipped
-//     fingerprint is A2-4.6's (and a grade change therefore does NOT force
-//     a revision — provenance growth never changes content_hash, which is
-//     exactly what A2-4.7's dedup collapse relies on).
+//     brief pins. RULED (product owner, 2026-10-07): an erratum note inside
+//     ADR-0022 records that the grade lives in the append-only provenance
+//     entry, OUTSIDE the digest — immutability comes from provenance being
+//     append-only (A2-5.6, A2-2.8), not from fingerprint inclusion. The
+//     shipped fingerprint is A2-4.6's (and a grade change therefore does NOT
+//     force a revision — provenance growth never changes content_hash, which
+//     is exactly what A2-4.7's dedup collapse relies on).
 //   - The four "A2-local" cap constants of the A2 §4 sketch const block
 //     (NodeLabelMaxBytes, HypothesisClaimMaxBytes, HypothesisBasisMaxBytes,
 //     AddressMaxBytes) are NOT redefined here: they are A0-7.1 registry rows
 //     with a single Go definition in internal/caps, and a second definition
 //     would be an A0-7.2 defect. A2-7.1's "(A2-local)" markers for those
-//     four contradict the A0-7.1 registry as adopted by AM-2 — surfaced as
-//     a contract inconsistency; internal/caps governs. Only
+//     four contradict the A0-7.1 registry as adopted by AM-2 — ruled a
+//     stale-marker erratum (product owner, 2026-10-07, A2 §6 item 16);
+//     internal/caps governs. Only
 //     ProvenanceMaxEntries (no registry row) is defined here, per the sketch.
 //   - ReservedAttrKeys is unexported. A2-6.3's sketch shows an exported
 //     `var ReservedAttrKeys = map[string]bool`; an exported package-level map
@@ -193,7 +219,17 @@
 //     store) or list ordering by event seq (A2-4.7, needs the event log).
 //     The over-bound list is summary_too_large because A2-7.1 assigns
 //     mechanism R to the ProvenanceMaxEntries class; the empty list is
-//     validation per A2-5.1/A2-5.7.
+//     validation per A2-5.1/A2-5.7. A2-5.7's caller-dependent split —
+//     internal when the PLATFORM ingest path failed to produce a run_id or
+//     event_id, validation when a supplied id is malformed — is not decidable
+//     at type level (a type cannot see its caller), so the kinds returned
+//     here are the type-level defaults: WP-15 owns the reclassification at
+//     A2-10.2 step 12, and since A2-5.2 makes provenance non-suppliable by
+//     clients, an empty list or a missing run_id/event_id on the ingest path
+//     is A2-5.7's internal bullet. A silent WP-15 pass-through would ship
+//     the wrong kind; TestProvenanceMandatory pins the type-level defaults,
+//     not the ingest classification (owner recorded 2026-10-07 after the
+//     independent review flagged the gap).
 //   - Closed-list pinning: TestNodeKindListClosed, TestEdgeKindListClosed
 //     and the 20-key/reserved-set pins parse contracts/A2-graph.md directly
 //     (relative path from this package), never a transcription of this

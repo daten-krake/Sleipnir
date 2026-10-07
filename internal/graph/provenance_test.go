@@ -321,7 +321,7 @@ func TestProvenanceMandatory(t *testing.T) {
 			{"run_id_wrong_prefix", func(p *Provenance) { p.RunID = "eng_01m1y2whfhgbz06ays6dxnvyws" }},
 			{"run_id_forbidden_alphabet_char", func(p *Provenance) { p.RunID = "run_01m1y2whfhnjx2am9103w0pnqi" }},
 			{"event_id_wrong_prefix", func(p *Provenance) { p.EventID = "evtX01m1y2whfhp17g0avdqztd2p3" }},
-			{"event_id_crockford_folded", func(p *Provenance) { p.EventID = "evt_01m1y2whfhp17g0avdqztd2p3x " }},
+			{"event_id_trailing_space", func(p *Provenance) { p.EventID = "evt_01m1y2whfhp17g0avdqztd2p3x " }},
 			{"agent_node_id_is_graph_node_id", func(p *Provenance) {
 				p.PrincipalKind = PrincipalNode
 				p.AgentNodeID = "gn_01m1y2whfhh039ykj5x8mc5a0g"
@@ -372,7 +372,7 @@ func TestProvenanceMandatory(t *testing.T) {
 			"2019-09-07T14:03:22.481Z",      // below the year window
 			"2100-09-07T14:03:22.481Z",      // at/over the year window
 			"2026-13-45T99:99:99.999Z",      // calendar nonsense, right width
-			"not a timestamp at all!!",      // garbage (25 bytes: the length gate rejects it)
+			"not a timestamp at all!!",      // garbage (24 bytes: passes the length gate; timex's A0-5.1 regex rejects it)
 		}
 		for _, ts := range rejects {
 			p := baseEntry()
@@ -411,6 +411,45 @@ func TestProvenanceMandatory(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "field=recorded_at") {
 			t.Errorf("message must name the field: %v", err)
+		}
+	})
+
+	t.Run("rejected_values_are_never_echoed", func(t *testing.T) {
+		// A2-5.8: provenance is never echoed into an error message beyond ids
+		// and field names — and a value that FAILED id/enum validation is not
+		// an id (A0-1.7 covers established ids only). Regression pin for the
+		// review-demonstrated leak: a secret-shaped run_id must not appear in
+		// the rejection, in any of the three value-checking sites.
+		const sentinel = "sk-live-ABCDEF1234567890abcdef"
+		mutations := []struct {
+			name   string
+			mutate func(*Provenance)
+			field  string
+		}{
+			{"run_id_secret_shaped", func(p *Provenance) { p.RunID = sentinel }, "field=run_id"},
+			{"principal_kind_secret_shaped", func(p *Provenance) { p.PrincipalKind = PrincipalKind(sentinel) }, "field=principal_kind"},
+			{"confidence_secret_shaped", func(p *Provenance) { p.Confidence = Confidence(sentinel) }, "field=confidence"},
+			{"event_id_secret_shaped", func(p *Provenance) { p.EventID = sentinel }, "field=event_id"},
+		}
+		for _, m := range mutations {
+			p := baseEntry()
+			m.mutate(&p)
+			err := p.Validate()
+			if err == nil {
+				t.Fatalf("%s: sentinel value accepted", m.name)
+			}
+			if kind := errs.KindOf(err); kind != errs.Validation {
+				t.Errorf("%s: kind = %q, want validation", m.name, kind)
+			}
+			if strings.Contains(err.Error(), sentinel) {
+				t.Errorf("%s: message echoes the rejected value: %v", m.name, err)
+			}
+			if strings.Contains(err.Error(), "SENTINEL") || strings.Contains(err.Error(), "sk-live") {
+				t.Errorf("%s: message echoes a fragment of the rejected value: %v", m.name, err)
+			}
+			if !strings.Contains(err.Error(), m.field) {
+				t.Errorf("%s: message must name the field: %v", m.name, err)
+			}
 		}
 	})
 

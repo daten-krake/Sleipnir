@@ -232,8 +232,14 @@ func (a *Attrs) UnmarshalJSON(b []byte) error {
 	}
 	var m map[string]AttrValue
 	if err := json.Unmarshal(b, &m); err != nil {
-		return errs.Newf(errs.Validation,
-			"decoding graph attrs: %d input bytes are not a flat object of bare scalars: %v (A2-6.1)", len(b), err)
+		// Pass 1 rejected every structural defect, so what reaches here is an
+		// AttrValue value-form rejection (float literal, out-of-range integer,
+		// lone surrogate). Wrap it — never flatten it into a new error
+		// (ADR-0019 §2: the chain must survive errors.Unwrap) — and describe
+		// it accurately: the input IS a flat object; a *value's form* is what
+		// violates A2-6.1.
+		return errs.Wrapf(err,
+			"decoding graph attrs: %d input bytes carry a value that is not a bare scalar in A2-6.1 form", len(b))
 	}
 	if m == nil {
 		// Unreachable after walkAttrsStructure rejected a null top level;
@@ -263,44 +269,9 @@ func walkAttrsStructure(b []byte) error {
 	}
 	seen := make(map[string]bool)
 	for dec.More() {
-		keyTok, err := dec.Token()
-		if err != nil {
-			return errs.Newf(errs.Validation, "decoding graph attrs: reading a key: %v (A2-6.1)", err)
+		if err := walkAttrEntry(dec, seen); err != nil {
+			return err
 		}
-		key, ok := keyTok.(string)
-		if !ok {
-			// json.Decoder guarantees a string (or the closing delimiter,
-			// which More() excluded) at key position.
-			return errs.Newf(errs.Internal, "decoding graph attrs: decoder returned a non-string key token %T", keyTok)
-		}
-		if !attrKeyRE.MatchString(key) {
-			return errs.Newf(errs.Validation,
-				"decoding graph attrs: key %.64q does not match the A0-8.1 form ^[a-z][a-z0-9_]{0,39}$ (A2-6.2)", key)
-		}
-		if reservedAttrKeys[key] {
-			return errs.Newf(errs.Validation,
-				"decoding graph attrs: key %q is a reserved field name (A2-6.3, byte-exact membership)", key)
-		}
-		if seen[key] {
-			return errs.Newf(errs.Validation,
-				"decoding graph attrs: duplicate key %q — a map decode would silently keep the last (A0-2.5)", key)
-		}
-		seen[key] = true
-		valTok, err := dec.Token()
-		if err != nil {
-			return errs.Newf(errs.Validation,
-				"decoding graph attrs: reading the value of key %q: %v (A2-6.1)", key, err)
-		}
-		switch t := valTok.(type) {
-		case json.Delim:
-			return errs.Newf(errs.Validation,
-				"decoding graph attrs: key %q: nested %q — objects and arrays are rejected, attrs is flat (A2-6.1)", key, string(t))
-		case nil:
-			return errs.Newf(errs.Validation,
-				"decoding graph attrs: key %q: null is rejected — an unset attrs entry is absent (A2-6.1, A0-8.3)", key)
-		}
-		// string/number/bool: the content is validated by
-		// AttrValue.UnmarshalJSON in pass 2, on the raw bytes.
 	}
 	if tok, err := dec.Token(); err != nil || tok != json.Delim('}') {
 		return errs.Newf(errs.Validation, "decoding graph attrs: object is not properly closed (A2-6.1)")
@@ -308,6 +279,53 @@ func walkAttrsStructure(b []byte) error {
 	if dec.More() {
 		return errs.Newf(errs.Validation, "decoding graph attrs: trailing data after the attrs object (A0-2.3)")
 	}
+	return nil
+}
+
+// walkAttrEntry consumes one key/value pair of the token walk, rejecting
+// key-shape (A2-6.2), reserved-name (A2-6.3), duplicate-key (A0-2.5) and
+// nested-container/null-value (A2-6.1) violations before any value content is
+// decoded. A string/number/bool value's *form* is validated by
+// AttrValue.UnmarshalJSON in pass 2, on the raw bytes.
+func walkAttrEntry(dec *json.Decoder, seen map[string]bool) error {
+	keyTok, err := dec.Token()
+	if err != nil {
+		return errs.Newf(errs.Validation, "decoding graph attrs: reading a key: %v (A2-6.1)", err)
+	}
+	key, ok := keyTok.(string)
+	if !ok {
+		// json.Decoder guarantees a string (or the closing delimiter,
+		// which More() excluded) at key position.
+		return errs.Newf(errs.Internal, "decoding graph attrs: decoder returned a non-string key token %T", keyTok)
+	}
+	if !attrKeyRE.MatchString(key) {
+		return errs.Newf(errs.Validation,
+			"decoding graph attrs: key %.64q does not match the A0-8.1 form ^[a-z][a-z0-9_]{0,39}$ (A2-6.2)", key)
+	}
+	if reservedAttrKeys[key] {
+		return errs.Newf(errs.Validation,
+			"decoding graph attrs: key %q is a reserved field name (A2-6.3, byte-exact membership)", key)
+	}
+	if seen[key] {
+		return errs.Newf(errs.Validation,
+			"decoding graph attrs: duplicate key %q — a map decode would silently keep the last (A0-2.5)", key)
+	}
+	seen[key] = true
+	valTok, err := dec.Token()
+	if err != nil {
+		return errs.Newf(errs.Validation,
+			"decoding graph attrs: reading the value of key %q: %v (A2-6.1)", key, err)
+	}
+	switch t := valTok.(type) {
+	case json.Delim:
+		return errs.Newf(errs.Validation,
+			"decoding graph attrs: key %q: nested %q — objects and arrays are rejected, attrs is flat (A2-6.1)", key, string(t))
+	case nil:
+		return errs.Newf(errs.Validation,
+			"decoding graph attrs: key %q: null is rejected — an unset attrs entry is absent (A2-6.1, A0-8.3)", key)
+	}
+	// string/number/bool: the content is validated by
+	// AttrValue.UnmarshalJSON in pass 2, on the raw bytes.
 	return nil
 }
 

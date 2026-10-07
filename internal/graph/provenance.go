@@ -99,12 +99,25 @@ func ValidateProvenance(list []Provenance) error {
 func (p Provenance) Validate() error {
 	if !p.PrincipalKind.known() {
 		return errs.Newf(errs.Validation,
-			"validating graph provenance entry: field=principal_kind value=%.32q: not one of the five closed A2-5.3 kinds (platform, orchestrator, worker, node, user)",
-			string(p.PrincipalKind))
+			"validating graph provenance entry: field=principal_kind: %d bytes: not one of the five closed A2-5.3 kinds (platform, orchestrator, worker, node, user) — a rejected value is never echoed (A2-5.8)",
+			len(p.PrincipalKind))
 	}
 	if err := requireID("run_id", ids.Run, p.RunID); err != nil {
 		return err
 	}
+	if err := p.validateConditionalIDs(); err != nil {
+		return err
+	}
+	if err := requireID("event_id", ids.Event, p.EventID); err != nil {
+		return err
+	}
+	return p.validateTimestampsAndGrade()
+}
+
+// validateConditionalIDs checks A2-5.3's conditional principal ids and the
+// tool pair, in the field table's order (the first violated rule is the one
+// reported — A2-10.2's determinism).
+func (p Provenance) validateConditionalIDs() error {
 	// job_id — required when principal_kind ∈ {orchestrator, worker}.
 	if (p.PrincipalKind == PrincipalOrchestrator || p.PrincipalKind == PrincipalWorker) && p.JobID == "" {
 		return missingField("job_id", "principal_kind="+string(p.PrincipalKind))
@@ -148,9 +161,13 @@ func (p Provenance) Validate() error {
 		return errs.Newf(errs.Validation,
 			"validating graph provenance entry: field=tool_version is set without field=tool_id: a version string without its registry id attributes nothing (A2-5.3, A0-1.3)")
 	}
-	if err := requireID("event_id", ids.Event, p.EventID); err != nil {
-		return err
-	}
+	return nil
+}
+
+// validateTimestampsAndGrade checks the trailing three A2-5.3 fields — the
+// two timestamps (through timex, A0-5.3) and the closed confidence grade —
+// in the field table's order.
+func (p Provenance) validateTimestampsAndGrade() error {
 	if err := checkTimestamp("recorded_at", p.RecordedAt, true); err != nil {
 		return err
 	}
@@ -159,8 +176,8 @@ func (p Provenance) Validate() error {
 	}
 	if !p.Confidence.known() {
 		return errs.Newf(errs.Validation,
-			"validating graph provenance entry: field=confidence value=%.32q: not one of the three closed A2-5.6 evidence grades (observed, inferred, verified) — there is no adjective scale (ADR-0022)",
-			string(p.Confidence))
+			"validating graph provenance entry: field=confidence: %d bytes: not one of the three closed A2-5.6 evidence grades (observed, inferred, verified) — there is no adjective scale (ADR-0022); a rejected value is never echoed (A2-5.8)",
+			len(p.Confidence))
 	}
 	return nil
 }
@@ -175,9 +192,11 @@ func optionalID(field string, kind ids.Kind, id string) error {
 	return nil
 }
 
-// requireID rejects an absent or malformed required provenance id. Ids are
-// not secrets (A0-1.7), so the message may name the offending value —
-// bounded, in case a hand-built value is oversized garbage.
+// requireID rejects an absent or malformed required provenance id. A
+// rejected value is never echoed: A0-1.7's "ids are not secrets" covers
+// values *established* as ids, and a value that failed ids.Valid is not
+// established — it may be secret material (A2-5.8: provenance is never
+// echoed into an error message beyond ids and field names).
 func requireID(field string, kind ids.Kind, id string) error {
 	if id == "" {
 		return missingField(field, "required (A2-5.3)")
@@ -193,10 +212,14 @@ func missingField(field, why string) error {
 		"validating graph provenance entry: field=%s is missing: %s", field, why)
 }
 
+// badID rejects a value that failed byte-exact id validation for the field's
+// declared A0-1.2 kind, naming the field, the expected kind and the value's
+// byte length — never the value (see requireID; the same discipline
+// checkTimestamp applies to oversized timestamps).
 func badID(field string, kind ids.Kind, id string) error {
 	return errs.Newf(errs.Validation,
-		"validating graph provenance entry: field=%s value=%.40q: not a byte-exact %s id (A0-1.5: no normalization, no case folding)",
-		field, id, string(kind))
+		"validating graph provenance entry: field=%s: %d bytes: not a byte-exact %s id (A0-1.5: no normalization, no case folding)",
+		field, len(id), string(kind))
 }
 
 // checkTimestamp validates one A0-5.1 timestamp field through timex
