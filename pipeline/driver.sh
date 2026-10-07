@@ -135,6 +135,10 @@ print(sum(1 for e in q["work"] if e.get("status") in ("pr_open", "principal_vali
 }
 
 # --- capped child runs (AGENTS.md 2026-09-21: never uncapped) ---------------
+# Context hygiene (owner directive 2026-10-07): every invocation below is a
+# FRESH `opencode run` — deliberately no --session/--continue anywhere in
+# this script, so each stage and each task starts with a clean context and
+# the only handoff between stages is the files (briefs, reports, commits).
 
 run_capped() { # run_capped <secs> <logfile> <cmd...> — kills the whole group
   local secs="$1" log="$2"; shift 2
