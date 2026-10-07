@@ -112,6 +112,11 @@
   `verify-vectors.py` **PASS 52 / FAIL 0**, A1/A2 control-character scans
   clean (A1's two raw U+2028/29/7F are the pre-existing §4.2 example bytes in
   code blocks, not table rows).
+- **PR #11 opened and URL verified** (label `agent-built`):
+  https://github.com/daten-krake/Sleipnir/pull/11 — WP-09 + WP-14 + both
+  review applications + the ten errata + session records, with the E5
+  ruling-path note in the body so the owner can veto at review. Session-close
+  checklist complete; `next_steps.md` rewritten for session 3 (WP-10 ∥ WP-15).
 
 ## Decisions
 
@@ -253,6 +258,6 @@
 
 | total input | uncached input | cache read | cache write | output | reasoning |
 |---|---|---|---|---|---|
-| 21310303 | 1143201 | 20167102 | 0 | 59710 | 58472 |
+| 22628114 | 1150679 | 21477435 | 0 | 62263 | 58868 |
 
 _(run `sessions/update-usage.sh sessions/2026-10-07-events-graph.md ses_eea8e38abffe7NBrfp4hw5mBxx` at session end — note: this branch still carries the old `.pi` script; until the `chore/opencode-config` PR merges, use that branch's OpenCode version: `git show chore/opencode-config:sessions/update-usage.sh`)_
