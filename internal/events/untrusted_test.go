@@ -61,6 +61,9 @@ func TestUntrustedFieldsCoversEveryStarredField(t *testing.T) {
 				t.Errorf("kind %s: UntrustedFields reports an unknown kind", row.name)
 				continue
 			}
+			if got == nil {
+				t.Errorf("kind %s: UntrustedFields returned nil with ok=true; the documented promise is an empty non-nil slice (nil marshals as null, []string{} as [])", row.name)
+			}
 			want := starsFromTaxonomy[row.name]
 			if want == nil {
 				want = []string{}

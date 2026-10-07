@@ -61,6 +61,45 @@
 //     int64 except exit_code, the only field A1-4.2 ranges; enums are
 //     byte-exact closed-list strings.
 //
+// # Disposition of the row's remaining clauses (by number)
+//
+//   - A1-1.4 — time semantics: the envelope carries recorded_at, occurred_at
+//     and occurred_claimed_at as strings; stamping, clamping (A1-5.4 →
+//     WP-10) and the untrusted marking of occurred_claimed_at (A0-5.7,
+//     A1-4.4) are composition behaviour → WP-11.
+//   - A1-1.6 — no post-commit-mutable fields: satisfied structurally — no
+//     method here mutates an Event, and every annotation is its own kind
+//     (chain_break_detected, report_inclusion_changed, …). Append-only
+//     enforcement on the write path → WP-11 and the store seam (WP-17).
+//   - A1-1.7 — evidence references: evidence_refs and every *_evidence_id
+//     field are transcribed as strings; evi_ kind validation (A0-1.5) and the
+//     A1-4.7/7.3 evidence_refs derivation are composition → WP-11.
+//   - A1-1.8 — served representation: the Served type and its canonical
+//     17-key bytes are A1-5.7 → WP-10.
+//   - A1-2.3 — platform-only composition, caller-supplied platform-stamped
+//     fields rejected: write path → WP-11 (negatives
+//     TestClientCannotSupplyEnvelopeFields, TestUntrustedFlagCannotBeSupplied
+//     → WP-20).
+//   - A1-2.5 — engagement_id derived from the token binding, body-supplied
+//     rejected, cross-engagement → notfound: request handling → WP-11/WP-18
+//     and the api edge; nothing here types it beyond the envelope field.
+//   - A1-2.6/2.7 — machine-principal append limits and the unreachability of
+//     actor.type="platform": write-path enforcement → WP-11 (negatives →
+//     WP-20).
+//   - A1-2.8 — the A2 provenance pair (source_event_id + graph ids): field
+//     names implemented byte-exact in payload_graph.go; consumption is A2's
+//     (internal/graph, WP-18 ingest).
+//   - A1-3.2 — the payload-column notation (name:type, (N) caps, * stars,
+//     enum{…}, array[string]): the transcription rule this package follows;
+//     contract_test.go parses exactly this notation.
+//   - A1-3.5 — kinds are added only by contract revision: pinned by
+//     TestKindListIs42AndClosed (42, unique, table order) including the
+//     absent-node_superseded subtest.
+//   - A1-3.6 — A2-coordinated field names: implemented in payload_graph.go's
+//     tags, byte-exact.
+//   - A1-3.7/A1-3.8 — SPEC §5 coverage table and the A2 cross-contract
+//     answers: completeness/governance text, no code obligation here.
+//
 // # Clauses deliberately not implemented here, and who owns them
 //
 //   - A1-4.2–4.7, A1-4.9, A1-7 — the composition/validation pass: NewEvent,
@@ -74,10 +113,11 @@
 //     (AGENTS.md), and half of the pass cannot be written inside a
 //     types-only package.
 //   - A1-5 — the hash-chain primitives: Preimage, HashEvent, Served,
-//     ChainSpecV1, ChainZero, ChainExclude, HeadLogIntervalSeq. Owner:
-//     WP-10.
+//     ChainSpecV1, ChainZero, ChainExclude, HeadLogIntervalSeq — and
+//     ChainHead, which A1-5.6 (inside WP-10's A1-5.1…5.10 row) defines as
+//     the write-side chain-head state; WP-12 consumes it. Owner: WP-10.
 //   - A1-6 — the verification walk and its bookkeeping types: VerifyResult,
-//     ChainHead, IntegrityState, ExportIntegrity. Owner: WP-12.
+//     IntegrityState, ExportIntegrity. Owner: WP-12.
 //     VerifyTrigger and BreakKind DO live here because A1-3.3's payload
 //     structs are typed with them (chain_verified, chain_break_detected).
 //   - A1-4.5 cap constants — not redeclared here: the A0-7.1 registry exists

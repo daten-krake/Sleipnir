@@ -36,7 +36,8 @@ var untrustedFields = map[Kind][]string{
 // free text) per A1-4.4 — in A1-3.3 field order. The returned slice is a
 // fresh copy the caller may freely modify.
 //
-// fields is empty for a kind with no starred field (23 of 42). ok is false
+// fields is non-nil for every known kind — empty for a kind with no starred
+// field (23 of 42) — so it never marshals as null. ok is false
 // when k is not in the closed taxonomy (A1-3.1); callers must reject an
 // unknown kind with validation before ever asking for its fields, so ok
 // false indicates a platform defect at the call site, not a client error.
