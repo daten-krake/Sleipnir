@@ -12,13 +12,17 @@
 
 ## Done this session
 
-- **Housekeeping (partial):** verified all three 2026-09-29 PRs merged (#7/#8/#9),
+- **Housekeeping done:** verified all three 2026-09-29 PRs merged (#7/#8/#9),
   local `main` fast-forwarded to `321e319`, CI green on main (3/3 checks);
-  deleted stale remote branch `sessions/close-2026-09-29`. Installed `gh` via
-  brew (new environment: macOS, was WSL; WORKFLOW §7's Windows-token recipe no
-  longer applies — needs amendment or a macOS recipe; `gh auth login` pending,
-  then the `chore/opencode-config` PR). Opened working branch
+  deleted stale remote branch `sessions/close-2026-09-29`. Installed and
+  authenticated `gh` via brew (new environment: macOS, was WSL; WORKFLOW §7's
+  Windows-token recipe no longer applies — needs amendment to the plain
+  `gh auth login` + `gh pr create` flow). Opened working branch
   `foundation/events-graph` from `main`.
+- **PR #10 opened** for `chore/opencode-config` (`.pi` → OpenCode migration:
+  agent definitions, start-session skill, `update-usage.sh`), label
+  `agent-built`, URL verified: https://github.com/daten-krake/Sleipnir/pull/10.
+  `next_steps.md` §0 is fully discharged.
 - **P-82 is stale-good news:** `next_steps.md` warned `TestContentHashVector`
   needs a new normative vector published in A2 first — A2 §4.2 already carries
   F1/F1-R/F3/S1 (bytes, lens, digests, plus the `4a017e71…` defective-marker)
