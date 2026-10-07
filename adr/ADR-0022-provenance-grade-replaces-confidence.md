@@ -1,6 +1,9 @@
 # ADR-0022: Provenance evidence grade replaces finding-level confidence
 
-- **Status:** Accepted
+- **Status:** Accepted. The *placement* of the grade relative to the content
+  fingerprint carries the erratum note inside the Decision section below
+  (product owner, 2026-10-07); the decision itself is unchanged, so this ADR
+  is not superseded (ADR-0019 §3 amendment-note precedent).
 - **Date:** 2026-09-21 (signed by the product owner in PR #2, item D2; Q2
   dates from 2026-09-04, the A2 deviation from 2026-09-11)
 - **Deciders:** product owner (signature, PR #2 item D2); architect (A2-2.7,
@@ -89,6 +92,27 @@ ADR-0016 §1, and it is:
   covered, get the same treatment;
 - **inside** the content fingerprint (A2-4.8), so a grade cannot be changed
   without a revision and a `supersedes` edge;
+
+  > **Erratum note (product owner, 2026-10-07).** This bullet misstates the
+  > frozen A2 it cites. A2-4.6 excludes provenance from the 20-key content
+  > document entirely — "ids, `graph_seq`, provenance, quarantine flags,
+  > `report_excluded`, `superseded_by_id` and `content_hash` are not part of
+  > the document at all, so none of them can influence the digest" — A2-4.7's
+  > dedup collapse appends provenance entries *without* changing
+  > `content_hash`, and A2 §4.2's normative vectors (independently recomputed
+  > 2026-10-07) carry no `confidence` key. A2-4.8 is the
+  > recompute-from-stored-bytes rule and says nothing about provenance. The
+  > grade therefore lives in the append-only provenance entry, **outside** the
+  > fingerprint, and this bullet's protective intent — a grade cannot be
+  > silently changed — is discharged by A2-5.6 ("set by the platform at
+  > ingest … MUST NOT be raised by a later write") and A2-2.8 (provenance is
+  > platform-only, changed never except by a collapse append), not by digest
+  > inclusion. Following the bullet literally would invalidate the published
+  > vectors, break the idempotent-replay guarantee, and make raising a grade
+  > to `verified` rewrite an immutable hash. The decision text above is
+  > unchanged; nothing is superseded. Surfaced by the WP-14 implementer
+  > (`internal/graph`), independently confirmed by its review; `internal/graph`
+  > ships A2-4.6's behaviour.
 - raisable to `verified` **only** when the new provenance entry's `event_id`
   differs from every existing one **and** its `task_id`/`agent_node_id` differ —
   a second, independent observation (A2-5.6). A node that only ever observed

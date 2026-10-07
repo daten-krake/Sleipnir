@@ -483,9 +483,14 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   ```go
   // ReservedAttrKeys (A2-6.3): closed list. Membership is byte-exact — no
   // prefix, suffix or substring matching. `seq` stays reserved even though the
-  // graph field is `graph_seq` (A2-1.4a); `operator_id` is gone with the
+  // graph field is `graph_seq` (A2-1.4a); `node_id` likewise, per A0-3.6's
+  // platform-wide reservation (§6 item 19); `operator_id` is gone with the
   // A2-5.3 rename to `user_id`.
-  var ReservedAttrKeys = map[string]bool{ /* 50 keys */ }
+  // Shape erratum (§6 item 18, 2026-10-07): internal/graph ships this set
+  // UNEXPORTED and read-only — an exported package-level map is mutable
+  // cross-package state (DESIGN §4, which outranks this illustrative,
+  // not-compiled sketch); the key set below is the norm, the var shape is not.
+  var ReservedAttrKeys = map[string]bool{ /* 51 keys */ }
   ```
 
   `ReservedAttrKeys = {id, engagement_id, seq, graph_seq, kind, label, summary,
@@ -496,8 +501,10 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   target_id, source_kind, target_kind, retracted, principal_kind, run_id,
   job_id, task_id, agent_node_id, user_id, tool_id, tool_version, event_id,
   recorded_at, observed_claimed_at, confidence, graph_node_id,
-  graph_edge_id}` (50 keys). Membership MUST be tested **byte-exactly** — a
-  prefix or substring match MUST NOT be used. _Two places to look for one fact
+  graph_edge_id, node_id}` (51 keys). Membership MUST be tested **byte-exactly** — a
+  prefix or substring match MUST NOT be used. `node_id` is reserved although no
+  A2 field bears the name — A0-3.6's platform-wide reservation (§6 item 19),
+  the same logic that keeps `seq` reserved. _Two places to look for one fact
   is how a report ends up contradicting the graph._
   `Tests: TestReservedAttrKeysRejected`.
 - **A2-6.4** Caps (mechanism R, A2-7): ≤ 16 keys (`AttrsMaxKeys`), ≤ 512 B per
@@ -539,15 +546,15 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
   |---|---|---|---|---|
   | `summary` (all kinds except `finding`) | 512 B | `NodeSummaryMaxBytes` | Q4 / A0-7.1 | **R** |
   | `summary` (`finding`) | 2048 B | `FindingSummaryMaxBytes` | Q4 / A0-7.1 | **R** |
-  | `label` | 128 B | `NodeLabelMaxBytes` (A2-local) | A2 | **R** |
-  | `claim` (`hypothesis`) | 512 B | `HypothesisClaimMaxBytes` (A2-local) | A2 | **R** |
-  | `basis` (`hypothesis`) | 1024 B | `HypothesisBasisMaxBytes` (A2-local) | A2 | **R** |
+  | `label` | 128 B | `NodeLabelMaxBytes` | A2 / A0-7.1 | **R** |
+  | `claim` (`hypothesis`) | 512 B | `HypothesisClaimMaxBytes` | A2 / A0-7.1 | **R** |
+  | `basis` (`hypothesis`) | 1024 B | `HypothesisBasisMaxBytes` | A2 / A0-7.1 | **R** |
   | `attrs` string value | 512 B | `AttrValueMaxBytes` | A2 / A0-7.1 | **R** |
   | `attrs` key length | 40 chars | `AttrKeyMaxBytes` | A0-8.1 / A0-7.1 | **R** |
   | `attrs` serialized object | 4096 B | `AttrsTotalMaxBytes` | A2 / A0-7.1 | **R** |
   | `attrs` key count | 16 | `AttrsMaxKeys` | A2 / A0-7.1 | **R** |
   | `evidence_ids` count | 8 | `EvidenceRefsMax` (was `EvidenceIDsMax`) | A1-4.7 / A0-7.1 | **R** |
-  | `addresses` count / entry | 16 / 64 B | `AddressesMax`, `AddressMaxBytes` (the latter A2-local) | A2 / A0-7.1 | **R** |
+  | `addresses` count / entry | 16 / 64 B | `AddressesMax`, `AddressMaxBytes` | A2 / A0-7.1 | **R** |
   | `tool_version` (provenance) | 64 B | `ToolVersionMaxBytes` — **A2's former 32 was a defect; the registry value 64 governs** | A0-7.1 | **R** |
   | `provenance` entries | 8 | `ProvenanceMaxEntries` (A2-local, A2-4.7) | A2 | **R** |
   | supersede chain length | 64 | `MaxSupersedeChain` | A2 / A0-7.1 | **R** |
@@ -1000,14 +1007,18 @@ verdict) · free-form graph query (Q1: none in v1; A6 stub) · UI rendering.
 Illustrative sketches — **not compiled** (`contracts/README.md`). They are the
 source of truth for field names and JSON shapes until `internal/graph` merges
 (DESIGN §1). **Domain layer** (DESIGN §1); imports foundation only:
-`internal/ids`, `internal/cjson`, `internal/errs`. One flat node type per
+`internal/ids`, `internal/cjson`, `internal/errs`, `internal/timex` (A2-5.3's
+timestamp validation needs A0-5.3's one parse procedure; re-deriving it
+locally would violate the one-implementation principle — §6 item 17). One
+flat node type per
 A2-2.3 rather than a per-kind payload
 interface: no hand-rolled JSON type dispatch, one fixed key set for A0-2.14,
 one validator `switch` (DESIGN §2, ADR-0001/0010 stdlib-only).
 
 ```go
 // internal/graph — the A2 contract types. Domain layer: imports internal/ids,
-// internal/cjson, internal/errs only (DESIGN §1). No pgx here; the store seam is
+// internal/cjson, internal/errs and internal/timex only (DESIGN §1; timex per
+// §6 item 17). No pgx here; the store seam is
 // internal/store (ADR-0010). internal/graph never imports internal/policy (A2-8.2).
 package graph
 
@@ -1128,13 +1139,12 @@ func (v *AttrValue) UnmarshalJSON(b []byte) error
 // AttrKeyMaxBytes, AttrValueMaxBytes, AttrsTotalMaxBytes, AddressesMax,
 // NodeSummaryMaxBytes and FindingSummaryMaxBytes come from internal/caps (A0-7.1).
 // A2's former `ToolVersionMaxBytes = 32` and `EvidenceIDsMax` are deleted.
-// Only these field classes remain A2-local (A0-7.7 delegation, A2-7.1):
+// NodeLabelMaxBytes, HypothesisClaimMaxBytes, HypothesisBasisMaxBytes and
+// AddressMaxBytes are ALSO A0-7.1 registry rows with their single Go
+// definition in internal/caps (A0-7.2 forbids a second definition; §6 item
+// 16) — the only genuinely A2-local constant is:
 const (
-	NodeLabelMaxBytes       = 128
-	HypothesisClaimMaxBytes = 512
-	HypothesisBasisMaxBytes = 1024
-	AddressMaxBytes         = 64
-	ProvenanceMaxEntries    = 8 // A2-4.7
+	ProvenanceMaxEntries = 8 // A2-4.7
 )
 
 // Provenance is one entry of the mandatory provenance list (A2-5.1, A2-4.7:
@@ -1840,6 +1850,52 @@ with their rulings, not left as open asks.
     the set of fields the unchanged rules run over. **Blocks WP-11 and WP-15**,
     which wire the scan into event and graph validation and MUST implement the
     caller-side exemption.
+
+16. **A2-7.1 / §4 sketch — ERRATUM (product owner decision 2026-10-07, WP-14
+    delivery).** A2-7.1's "(A2-local)" markers on `NodeLabelMaxBytes`,
+    `HypothesisClaimMaxBytes`, `HypothesisBasisMaxBytes` and `AddressMaxBytes`
+    — and the §4 sketch's "Only these field classes remain A2-local" const
+    block — were stale against the A0-7.1 registry as adopted by AM-2: all
+    four are registry rows whose single Go definition is `internal/caps`
+    (A0-7.2 makes any second definition a defect). Markers struck, sketch
+    block reduced to the one genuinely A2-local constant
+    (`ProvenanceMaxEntries`). `internal/graph` redefines none of the four
+    (grep-verified by the WP-14 review). Values unchanged.
+17. **§4 sketch import header — ERRATUM (product owner decision 2026-10-07,
+    WP-14 delivery).** The sketch said graph "imports internal/ids,
+    internal/cjson, internal/errs only", but A2-5.3's timestamp validation
+    needs A0-5.3's parse procedure, whose one implementation is
+    `internal/timex` (re-deriving it locally would violate the
+    one-implementation principle). `timex` added to both import headers; the
+    shipped import set {errs, ids, timex, cjson} is proved by `go list -deps`.
+18. **A2-6.3 sketch shape — ERRATUM (product owner decision 2026-10-07,
+    WP-14 delivery).** The sketch showed an exported
+    `var ReservedAttrKeys = map[string]bool`; an exported package-level map is
+    mutable cross-package state, which DESIGN §4 forbids and DESIGN outranks
+    an illustrative, not-compiled sketch. `internal/graph` ships the set
+    unexported and read-only, byte-identical to the key-set norm below and
+    contract-pinned with a mutation proof; every consumer (WP-15, WP-21) is
+    in-package. The set itself is unchanged by item 18 (item 19 adds one key).
+
+19. **A2-6.3 — ERRATUM (product owner decision 2026-10-07, WP-14
+    delivery; the set grows 50 → 51 keys).** The reserved set carried every
+    other platform id-vocabulary name — `graph_node_id`, `graph_edge_id`,
+    `agent_node_id`, `run_id`, `job_id`, `task_id`, `user_id`,
+    `engagement_id`, even `seq` although the field is `graph_seq` — but not
+    `node_id`, the one name A0-3.6 reserves platform-wide for the remote
+    agent node and A2-1.6/A2-11.4 (`TestNoBareNodeIDInGraphDocuments`) keep
+    out of graph documents. Unreserved, a writer could place an attrs entry
+    `"node_id"` on a served node document with any value — including a `gn_`
+    id, the exact conflation A0-3.6 exists to prevent, and no consumer
+    scanning JSON keys can tell platform field from untrusted attrs data.
+    `node_id` is added, following the `seq` precedent ("reserved even though
+    no field bears the name"). Additive-only (A0-6.5): attrs keys are writer
+    vocabulary, nothing platform-minted uses `node_id` as an attrs key, and
+    nothing depends on accepting one before first launch — after launch the
+    addition would reject a previously-accepted key, which is why it is ruled
+    now. Surfaced by the WP-14 review (E5); the shipped code was
+    contract-compliant — the gap was the contract's. `internal/graph`'s set
+    and its contract-parsed count pin updated in lockstep.
 
 ### A0 amendment requests
 
