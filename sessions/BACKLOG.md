@@ -164,6 +164,38 @@ Package layout of the monorepo given stdlib-only + pgx exception.
   head anchor** (the only control surviving store-write + log-write on one host,
   nearly free once `notify` exists). Narrowed one: keep the evidence *store*,
   cut the evidence *browser*. **Needs a decision session before WP-23.**
+- 2026-10-07: **WP-09 + WP-14 delivered** — walking-skeleton session 2
+  (`docs/2026-09-29-walking-skeleton-plan.md` §7 row S2; one branch, two
+  lanes, two independent reviews). `internal/events` (21 files, 2422 lines:
+  the 17-key envelope, 42-kind closed taxonomy, actor vocabulary, all 42
+  flat payload structs, the A1-4.4 star registry; seven test ids, 114
+  subtests, **zero internal imports**, tests parse `contracts/A1-events.md`
+  as their oracle) and `internal/graph` (12 files, 3505 lines: 10+7 closed
+  kinds, Node/Edge/Provenance/Attrs, the 20-key contentDoc with the A2 §4.2
+  vectors F1/F1-R/F3/S1 byte-exact incl. the defective-marker; nine test ids,
+  97 subtests, imports exactly errs/cjson/ids/timex). Both reviews
+  ACCEPT/APPROVE with **zero MUST FIX and zero code defects in the shipped
+  logic** — the 2026-09-24/29 pattern held a third time: every finding was
+  citation accuracy, doc completeness, error-convention precision or test
+  non-vacuity. Independent verification included a 1178-check extractor
+  (events), a 1960-triple endpoint-matrix cross-check and an own-oracle
+  vector recomputation (graph), and 15 + 11 mutation kills. Applied: the
+  attrs pass-2 rewrap keeps its error chain (`errs.Wrapf`, ADR-0019 §2),
+  rejected provenance values are never echoed (A2-5.8, sentinel-pinned),
+  doc.go dispositions completed, two over-long functions split. **Ten errata
+  ruled and applied:** A1 §6 items 19–23 (stale sketch enum comment,
+  `UntrustedFields` declared, sketch cap block struck, int-rule clarified,
+  phantom test id struck), A2 §6 items 16–19 (stale A2-local markers, timex
+  in the sketch header, ReservedAttrKeys shape, **E5: `node_id` joins the
+  reserved set, 51 keys**) and an erratum note inside **ADR-0022** — the
+  provenance grade lives in the append-only entry, **outside** the content
+  fingerprint; A2-4.6/4.7 + the published vectors are the only consistent
+  reading, the shipped behaviour stands. A0-2.3's UTF-8 question is answered:
+  graph half shipped at `graph.CanonicalContent`, events half → WP-11. All
+  ten packages green under `GOMEMLIMIT`/`-race`, `verify-vectors.py` still
+  **PASS 52 / FAIL 0**, `go.mod` still zero requires. Next: session 3 —
+  **WP-10 chain primitives ∥ WP-15 graph validation**, gate
+  `TestChainVectorDigests` byte-exact against A1 §4.3.
 - 2026-09-04 (design interview): **all session-1 decisions locked** —
   fixed stage views + capped 1-hop (no query endpoint v1); two node types
   Finding/Hypothesis; hard-reject validation; size budgets as contract
@@ -336,14 +368,6 @@ quarantine model from role matrix). Added 2026-09-04.
 - Offline capability of the Pi agent (session 4).
 - Which AD attack techniques are in/out of v1 tool registry scope
   (session with tool baseline).
-- **Who validates UTF-8 in contract string fields** (new 2026-09-24, → WP-09/
-  WP-14): `cjson.CanonicalValue` cannot enforce A0-2.3 on a Go value, because
-  `encoding/json` replaces an invalid string with U+FFFD before the canonicalizer
-  sees any bytes. A0-2.3 governs documents; field-level validation (A0-8.1) is
-  the only place left, and no package owns it yet. Related, and enforceable only
-  by review: `json.Marshal(float64(2))` emits `2`, byte-identical to an integer,
-  so A0-2.6's "no float field in a canonicalized type" needs a merge-gate line
-  when the domain types land.
 - **Where attribute-level redaction lives** (new 2026-09-21, → §10): DESIGN §1
   gives `logging` zero internal imports, so it cannot call `errs`' redaction
   helpers. WP-01's ruling: `errs` owns redaction of error strings (`errs.Secret`
@@ -369,6 +393,18 @@ quarantine model from role matrix). Added 2026-09-04.
   checkpoint/re-genesis mechanism (A1-6.9 — needs its own ADR).
 
 ## Resolved (kept for history)
+
+- ~~**Who validates UTF-8 in contract string fields**~~ → **answered
+  2026-10-07 (WP-14 delivery):** the graph half is owned and shipped by
+  `graph.CanonicalContent` (field-level reject-not-normalize at the
+  fingerprint boundary, naming field + byte length, never echoing the value);
+  the events half is assigned to **WP-11** (the composition/validation pass —
+  the first code that rejects a caller-supplied event string). `cjson`
+  remains unable to do it (encoding/json substitutes U+FFFD first), and the
+  WP-14 review added the decode-side caveat: encoding/json normalizes invalid
+  UTF-8 **at decode**, so the raw-body rejection belongs at WP-15's
+  request-decode boundary (H1). The A0-2.6 float merge-gate line the old item
+  asked for now exists: `TestPayloadsAreFlat` (WP-09).
 
 - ~~**Whether ADR-0019 needs an amendment note for A0-3.6's attribute
   spelling**~~ → **ruled by the product owner 2026-09-24:** yes — a

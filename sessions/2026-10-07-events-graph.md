@@ -63,6 +63,55 @@
 - **Independent WP-14 review launched** (same read-only discipline; own
   extractor for the endpoint matrix, reserved-key set and vectors; must
   re-run and invent mutations).
+- **WP-09 review: ACCEPT, no MUST FIX** (report: scratchpad
+  `wp09-events-review.md`, 426 lines). Independent extractor: **1178 checks,
+  0 failures**; enum pass 33/33; all 8 implementer mutations re-run (8/8
+  killed) plus 9 reviewer-invented (8 killed, 1 survivor → NIT, now pinned);
+  all five contract-defect claims confirmed from the text; P-25 signature
+  deviation judged defensible; `TestTimestampFieldsAreStrings` behaviour
+  confirmed covered by shipped subtests; `Validate()` deferral confirmed
+  clean (no `var _ Payload`, nothing half-stubbed). Applied (`6568a4d`):
+  doc.go dispositions for every row clause (SHOULD FIX-1), `ChainHead` ruled
+  WP-10's (NIT-4), the non-nil `UntrustedFields` promise pinned with a
+  regression assertion — mutation-proven killed on an out-of-repo copy
+  (NIT-1). NIT-2/3 deferred to WP-11/20 with notes; NIT-5 no action.
+- **WP-14 review: APPROVE, no MUST FIX** (report: scratchpad
+  `wp14-graph-review.md`, 477 lines). Independently reproduced: all gates,
+  vectors via own python oracle (incl. the defective marker as exactly the
+  unsorted canonicalization), 1960-triple endpoint-matrix cross-check
+  (exactly 48 allowed), 50-key reserved set, 12-field provenance shape, 45
+  conditional-id probes, 37 attrs probes; 4 implementer mutation proofs
+  re-run + 7 new package-side mutations, every one killed; all five
+  implementer contract-disagreement claims confirmed (① the brief's
+  "no confidence anywhere" overstated ADR-0022 — provenance grade is
+  contract; ②–⑤ corroborate the errata the owner had already ruled
+  mid-review). Applied (`9a02788`): **S1** attrs pass-2 rewrap now
+  `errs.Wrapf` with an accurate message — chain survives `errors.Unwrap`,
+  scratch-proven; **S2** rejected provenance values (principal_kind,
+  confidence, failed ids) are never echoed — field + byte length only,
+  regression-pinned by `rejected_values_are_never_echoed` with an
+  `sk-live-` sentinel; **S3** doc.go names WP-15 as the owner of A2-5.7's
+  caller-dependent internal/validation reclassification (type-level kinds
+  are defaults); NITs 1–5 applied (comment accuracy, `./internal/graph`
+  literal, dispositions for A2-1.1/1.3/1.9/5.5/6.4, `Provenance.Validate`
+  and `walkAttrsStructure` split into named helpers preserving A2-5.3 table
+  order, subtest rename); N6/N7 recorded, no change.
+- **A2 errata 16–18 + the ADR-0022 fingerprint erratum note applied**
+  (`311faac`) after the WP-14 review finished (oracle discipline): stale
+  "(A2-local)" markers struck, sketch import header gains timex,
+  ReservedAttrKeys shape note; ADR-0022 carries the erratum note (decision
+  text unchanged, nothing superseded, ADR-0019 §3 precedent).
+- **E5 ruled and applied** (`6d7d6d5`): `node_id` joins the A2-6.3 reserved
+  set (50 → 51 keys, A2 §6 item 19), contract and package in lockstep, count
+  pin updated. Ruling path: the question tool aborted; the owner's "go on"
+  was taken as confirmation of the recommended option and is recorded here
+  and in the PR body so it can be vetoed at PR review.
+- **Full-tree gates green at session end:** `gofmt -l .` clean, `go vet ./...`,
+  `go build ./...`, `go test ./...` and `-race` (10 packages) under
+  `GOMEMLIMIT=512MiB`/`-timeout`, `go.mod` still **zero requires**,
+  `verify-vectors.py` **PASS 52 / FAIL 0**, A1/A2 control-character scans
+  clean (A1's two raw U+2028/29/7F are the pre-existing §4.2 example bytes in
+  code blocks, not table rows).
 
 ## Decisions
 
@@ -149,12 +198,61 @@
 
 ## Open questions carried forward
 
-- (none yet — see `sessions/BACKLOG.md` standing questions and `next_steps.md`)
+- **E5 veto window:** the `node_id` reservation (A2 §6 item 19) was ruled via
+  the owner's "go on" after the question tool aborted — recorded as a
+  confirmation of the recommended option. Vetoable at PR review; reverting
+  means A2 §6 item 19 + the lockstep package/test edits (`6d7d6d5`).
+- **WP-10 (next session):** `ChainHead` (A1-5.6) is WP-10's to declare
+  (NIT-4 ruling); WP-12 consumes it. A1 §4.3's normative chain vector is the
+  gate: `TestChainVectorDigests` byte-exact.
+- **WP-11 handoff (events validation):** implement `Payload.Validate()` on
+  all 42 structs + `NewEvent` (incl. A1-1.2's non-nil `EvidenceRefs` init) —
+  until then no struct satisfies `Payload` and `Event.Payload` cannot be
+  populated (deliberate, documented). Import `internal/caps` (never redeclare
+  caps; the sketch block is struck — A1 §6 item 21). Own the events half of
+  A0-2.3 field-level UTF-8 validation. Wire the A1-4.9 secret scan **with
+  the A2-9.4/A1 §6 item 18 caller-side platform-minted exemption** (blocks
+  otherwise: ~28 % of `slp_node_` ids rejected). `attempt`/`http_status`/
+  `containers_killed` are `int64` (A1 §6 item 22). If WP-11 exports a
+  production kind→payload registry, switch `payload_test.go`'s
+  `allPayloadTypes` to it (drift risk noted by the implementer). NIT-2: pin
+  the "enums are plain strings except BreakKind/VerifyTrigger" ruling with a
+  `PkgPath()`-level assertion (here or WP-20). NIT-3: the 31 comment-only
+  enum value lists get behavioural pins through WP-11's validation tables.
+  `TestMaximalPayloadFitsCanonicalBound` runs over **42** kinds (the review
+  row's "39" is stale — A1 §6 item context; row not edited, precedent).
+- **WP-15 handoff (graph validation + write path):** own A2-5.7's
+  caller-dependent internal/validation reclassification at A2-10.2 step 12
+  (type-level kinds are defaults — S3); own the raw-body UTF-8 rejection at
+  the request-decode boundary (H1: encoding/json normalizes invalid UTF-8 at
+  decode, so wire strings arrive pre-normalized — without this an
+  invalid-UTF-8 body yields a U+FFFD `content_hash` instead of a rejection);
+  map foreign `*json.SyntaxError` to A0-3 kinds (H2 — else every malformed
+  client body 500s; paging precedent); apply the 64-byte `ToolVersionMaxBytes`
+  cap at step 8 (H3 — `Provenance.Validate` deliberately does not); wire the
+  A2-9.4 caller-side platform-minted exemption; consume `AllowsEndpoints`,
+  `ValidateProvenance`, `CanonicalContent`, in-package `reservedAttrKeys`;
+  rename the stale row id `TestNodeDedupIncludesConfidence` when shipping
+  (ADR-0022 — surface, don't implement a confidence field); discharge
+  `TestCapsRejectWithSummaryTooLarge` (first caller of `caps.Fits`).
+- **Still standing from BACKLOG (unchanged):** D10–D18 decision session
+  (S8, 2026-10-23 — gates WP-23 onward; read D17 first); the worker-egress
+  ADR (A3 CRIT, must exist before WP-29); A0 §4.1's k/id row-resolution half
+  (WP-19/20); `secretscan`'s provisional planted corpus → shared suite
+  (WP-19/20/21, `events`/`graph` import it, never the reverse); A0-7.10
+  composition rule ↔ D11 contingency note.
+- **Environment follow-ups:** WORKFLOW §7's PR recipe is WSL-era and needs
+  amendment to the macOS/OpenCode flow (`gh auth login` + `gh pr create`) —
+  proposed as a follow-up PR, not mixed into this one. AGENTS.md's
+  subagent-artifacts path (`~/.pi/agent/sessions/...`) is stale under
+  OpenCode; this session's child reports were routed through scratchpad files
+  by brief instead — worth an AGENTS.md delegation-bullet update in the same
+  follow-up.
 
 ## Token usage
 
 | total input | uncached input | cache read | cache write | output | reasoning |
 |---|---|---|---|---|---|
-| 566075 | 53801 | 512274 | 0 | 3484 | 5699 |
+| 21310303 | 1143201 | 20167102 | 0 | 59710 | 58472 |
 
 _(run `sessions/update-usage.sh sessions/2026-10-07-events-graph.md ses_eea8e38abffe7NBrfp4hw5mBxx` at session end — note: this branch still carries the old `.pi` script; until the `chore/opencode-config` PR merges, use that branch's OpenCode version: `git show chore/opencode-config:sessions/update-usage.sh`)_
