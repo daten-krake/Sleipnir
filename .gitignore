@@ -27,6 +27,9 @@ go.work.sum
 # env file
 .env
 
+# Pipeline run artifacts (briefs, logs, child reports) — never tracked
+pipeline/runs/
+
 # Editor/IDE
 # .idea/
 # .vscode/
