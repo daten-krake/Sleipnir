@@ -1,153 +1,483 @@
 {
-  "$comment": "Pipeline work queue. Seeded from docs/reviews/2026-09-11-contract-review-principal.md §4 rows (WP-10..22), docs/2026-09-29-walking-skeleton-plan.md §4/§7 (WP-23..41, IR-3/4), and the handoff notes of sessions/2026-10-07-events-graph.md. Status machine: ready -> implementing -> gates_failed|ownership_violation|timed_out|reviewed -> principal_validation -> pr_open -> merged. Wave B stays blocked-h3 until the D10-D18 + egress-ADR decision evening (plan §4 H3). deps reference wp numbers; a dep is satisfied when its status is merged.",
+  "$comment": "Pipeline work queue. Seeded from docs/reviews/2026-09-11-contract-review-principal.md \u00a74 rows (WP-10..22), docs/2026-09-29-walking-skeleton-plan.md \u00a74/\u00a77 (WP-23..41, IR-3/4), and the handoff notes of sessions/2026-10-07-events-graph.md. Status machine: ready -> implementing -> gates_failed|ownership_violation|timed_out|reviewed -> principal_validation -> pr_open -> merged. superseded = replaced by a re-cut (never schedulable; kept for history). Wave B stays blocked-h3 until the D10-D18 + egress-ADR decision evening (plan \u00a74 H3). deps reference wp numbers; a dep is satisfied when its status is merged.",
   "work": [
-    { "wp": 1,  "status": "merged" }, { "wp": 2,  "status": "merged" },
-    { "wp": 3,  "status": "merged" }, { "wp": 4,  "status": "merged" },
-    { "wp": 5,  "status": "merged" }, { "wp": 6,  "status": "merged" },
-    { "wp": 7,  "status": "merged" }, { "wp": 8,  "status": "merged" },
-    { "wp": 9,  "status": "merged" }, { "wp": 13, "status": "merged" },
-    { "wp": 14, "status": "merged" },
-
     {
-      "wp": 10, "slug": "chain-primitives", "family": "events",
-      "status": "ready", "tier": "small", "review": "one",
-      "deps": [9],
-      "clauses": "A1-5.1..A1-5.10 + the A1 §4.3 normative chain vector",
-      "files": ["internal/events/"],
-      "tests": "TestChainVectorDigests (§4.3 rows 0-3 byte-exact: preimage bytes, lens, hashes, served lens+digests, prev_hash links), TestChainZeroIsSixtyFourZeros, TestChainSpecConstant, TestPreimageExcludesExactlyThreeNames, TestServedBytesReproducible, TestRecordedAtClampIsMonotone (P-13, clock stepped backwards)",
-      "gate": "TestChainVectorDigests byte-exact against A1 §4.3; verify-vectors.py unchanged PASS",
-      "notes": "Ruled 2026-10-07: ChainHead (A1-5.6) is WP-10's to declare; WP-12 consumes it. No payload struct satisfies Payload until WP-11 — chain tests use test-local payload types or raw canonical bytes; NEVER stub Validate() (AGENTS.md safety-path rule). Imports available: cjson (canonicalization), timex (recorded_at clamp), ids, errs. A1-4.11: served form ignores unknown fields. Read internal/events/doc.go first — it is the entry point and lists every deferral with its owner."
+      "wp": 1,
+      "status": "merged"
     },
     {
-      "wp": 11, "slug": "events-validation", "family": "events",
-      "status": "ready", "tier": "small", "review": "two",
-      "deps": [9, 10, 6, 13],
+      "wp": 2,
+      "status": "merged"
+    },
+    {
+      "wp": 3,
+      "status": "merged"
+    },
+    {
+      "wp": 4,
+      "status": "merged"
+    },
+    {
+      "wp": 5,
+      "status": "merged"
+    },
+    {
+      "wp": 6,
+      "status": "merged"
+    },
+    {
+      "wp": 7,
+      "status": "merged"
+    },
+    {
+      "wp": 8,
+      "status": "merged"
+    },
+    {
+      "wp": 9,
+      "status": "merged"
+    },
+    {
+      "wp": 13,
+      "status": "merged"
+    },
+    {
+      "wp": 14,
+      "status": "merged"
+    },
+    {
+      "wp": 10,
+      "slug": "chain-primitives",
+      "family": "events",
+      "status": "superseded",
+      "tier": "small",
+      "review": "one",
+      "deps": [
+        9
+      ],
+      "clauses": "A1-5.1..A1-5.10 + the A1 \u00a74.3 normative chain vector",
+      "files": [
+        "internal/events/"
+      ],
+      "tests": "TestChainVectorDigests (\u00a74.3 rows 0-3 byte-exact: preimage bytes, lens, hashes, served lens+digests, prev_hash links), TestChainZeroIsSixtyFourZeros, TestChainSpecConstant, TestPreimageExcludesExactlyThreeNames, TestServedBytesReproducible, TestRecordedAtClampIsMonotone (P-13, clock stepped backwards)",
+      "gate": "TestChainVectorDigests byte-exact against A1 \u00a74.3; verify-vectors.py unchanged PASS",
+      "notes": "Ruled 2026-10-07: ChainHead (A1-5.6) is WP-10's to declare; WP-12 consumes it. No payload struct satisfies Payload until WP-11 \u2014 chain tests use test-local payload types or raw canonical bytes; NEVER stub Validate() (AGENTS.md safety-path rule). Imports available: cjson (canonicalization), timex (recorded_at clamp), ids, errs. A1-4.11: served form ignores unknown fields. Read internal/events/doc.go first \u2014 it is the entry point and lists every deferral with its owner. | 2026-10-07 run: TIMED OUT at small tier (zero code written; ~2h awake budget consumed by contract reading, then macOS sleep killed LM Studio requests mid-stream). Details: pipeline/runs/wp-10/timeout-findings.md. Before retry: retier or re-cut (P6 ruling pending) and keep the machine awake. | SUPERSEDED 2026-10-08 by re-cut into WP-42 (chain-core) + WP-43 (chain-head-vectors) \u2014 product-owner ruling after the 2026-10-07 timeout; do not schedule; worktree cleanup via driver.sh cleanup 10.",
+      "branch": "wp/10-chain-primitives"
+    },
+    {
+      "wp": 42,
+      "slug": "chain-core",
+      "family": "events",
+      "status": "ready",
+      "tier": "small",
+      "review": "one",
+      "deps": [
+        9
+      ],
+      "clauses": "A1-5.1, A1-5.2, A1-5.3, A1-5.4, A1-5.5, A1-5.7, A1-5.9 (constants/vocabulary only \u2014 the T1..T17 tamper-matrix tests stay WP-12), A1-5.10",
+      "files": [
+        "internal/events/"
+      ],
+      "tests": "TestChainZeroIsSixtyFourZeros, TestChainSpecConstant, TestPreimageExcludesExactlyThreeNames, TestServedBytesReproducible, TestRecordedAtClampIsMonotone (P-13, clock stepped backwards)",
+      "gate": "gofmt/vet/build/test+race green on internal/events; verify-vectors.py unchanged PASS",
+      "notes": "Re-cut of wp-10 (product-owner ruling 2026-10-08; the 2026-10-07 run timed out with zero code \u2014 pipeline/runs/wp-10/timeout-findings.md). READ-BUDGET MAP: A1-5.x lives at contracts/A1-events.md lines ~811-1090 \u2014 grep -n 'A1-5\\.' first, then read \u2264200-line slices; the A0-5.4 clamp bound (1000 ms) is in contracts/A0-conventions.md (grep 'A0-5.4'); the \u00a74.3 vector table is OUT OF SCOPE (WP-43). Imports available: cjson (CanonicalValue, SHA256Hex, With), timex (recorded_at clamp), ids, errs. No payload struct satisfies Payload until WP-11 \u2014 chain tests use test-local payload types or raw canonical bytes; NEVER stub Validate() (AGENTS.md safety-path rule). Read internal/events/doc.go first. The prior run burned its whole 2h budget on exploration: START WRITING chain.go WITHIN THE FIRST 30 MINUTES and refine incrementally."
+    },
+    {
+      "wp": 43,
+      "slug": "chain-head-vectors",
+      "family": "events",
+      "status": "ready",
+      "tier": "small",
+      "review": "one",
+      "deps": [
+        42
+      ],
+      "clauses": "A1-5.6 (ChainHead projection + IntegrityState consts), A1-5.8 (HeadLogIntervalSeq = 100), A1 \u00a74.3 normative chain vector",
+      "files": [
+        "internal/events/"
+      ],
+      "tests": "TestChainVectorDigests (\u00a74.3 rows 0-3 byte-exact: preimage bytes, lens, hashes, served lens+digests, prev_hash links)",
+      "gate": "TestChainVectorDigests byte-exact against A1 \u00a74.3; verify-vectors.py unchanged PASS",
+      "notes": "Re-cut of wp-10 (product-owner ruling 2026-10-08). Carried ruling 2026-10-07: ChainHead (A1-5.6) is declared HERE and consumed by WP-12; IntegrityState + its 4 consts accompany ChainHead; VerifyResult/ExportIntegrity stay WP-12. Head fields are never hashed (A1-5.6). READ-BUDGET MAP: the \u00a74.3 vector table is at contracts/A1-events.md lines ~2534-2704 \u2014 PARSE it from the contract markdown inside the test, never transcribe (tests pin contract TEXT); A1-5.6/5.8 are within lines ~811-1090 (grep -n first). Consumes WP-42's Preimage/HashEvent/Served. TestChainVectorDigests IS the gate \u2014 start it first."
+    },
+    {
+      "wp": 11,
+      "slug": "events-validation",
+      "family": "events",
+      "status": "ready",
+      "tier": "small",
+      "review": "two",
+      "deps": [
+        9,
+        42,
+        6,
+        13
+      ],
       "clauses": "A1-7.10 steps 3/5/7/8/9/10/12/13, A1-4.2 (all obligations), A1-4.4..A1-4.7, A1-4.9 (delegating to secretscan), A1-7.3 derivation",
-      "files": ["internal/events/"],
+      "files": [
+        "internal/events/"
+      ],
       "tests": "TestValidationOrderIsDeterministic (one error, first violated rule), TestPerKindObligations (table over A1-4.2, one row per kind), TestCapsRejectWithSummaryTooLarge, TestArraysSortedDedupedAtComposition, TestEvidenceRefsDerivation (P-07: evidence_stored included), TestUntrustedFlagIsPlatformComputed, TestMaximalPayloadFitsCanonicalBound (P-26, over all 42 kinds), TestFixedKeySetZeroValues",
-      "gate": "every A1-4.2 obligation row tested; the A2-9.4/A1-§6-item-18 platform-minted exemption tested positive AND negative",
-      "notes": "Handoff from WP-09 (tracker 2026-10-07): implement Payload.Validate() on all 42 structs + NewEvent (incl. A1-1.2 non-nil EvidenceRefs init) — until then Event.Payload cannot be populated. Import internal/caps, never redeclare cap constants (A1 §6 item 21 struck the sketch block). Own the events half of A0-2.3 field-level UTF-8 validation. Wire the A1-4.9 secret scan WITH the caller-side platform-minted exemption (skip Scan for a value passing ids.Valid for the field's declared kind and for A1-2.3 platform-stamped fields) — without it ~28% of slp_node_ ids are rejected. attempt/http_status/containers_killed are int64, exit_code is int (A1 §6 item 22). UntrustedFields is (Kind) ([]string, bool) (A1 §6 item 20). If you export a production kind->payload registry, switch payload_test.go's allPayloadTypes to it (drift). NIT-2: pin the plain-string-enum ruling with a PkgPath-level assertion. NIT-3: give the 31 comment-only enum lists behavioural pins via the validation tables. The review row's '39' is stale — 42 everywhere. review=two: enforcement path (write validation) gets a second independent reviewer per plan §7."
+      "gate": "every A1-4.2 obligation row tested; the A2-9.4/A1-\u00a76-item-18 platform-minted exemption tested positive AND negative",
+      "notes": "Handoff from WP-09 (tracker 2026-10-07): implement Payload.Validate() on all 42 structs + NewEvent (incl. A1-1.2 non-nil EvidenceRefs init) \u2014 until then Event.Payload cannot be populated. Import internal/caps, never redeclare cap constants (A1 \u00a76 item 21 struck the sketch block). Own the events half of A0-2.3 field-level UTF-8 validation. Wire the A1-4.9 secret scan WITH the caller-side platform-minted exemption (skip Scan for a value passing ids.Valid for the field's declared kind and for A1-2.3 platform-stamped fields) \u2014 without it ~28% of slp_node_ ids are rejected. attempt/http_status/containers_killed are int64, exit_code is int (A1 \u00a76 item 22). UntrustedFields is (Kind) ([]string, bool) (A1 \u00a76 item 20). If you export a production kind->payload registry, switch payload_test.go's allPayloadTypes to it (drift). NIT-2: pin the plain-string-enum ruling with a PkgPath-level assertion. NIT-3: give the 31 comment-only enum lists behavioural pins via the validation tables. The review row's '39' is stale \u2014 42 everywhere. review=two: enforcement path (write validation) gets a second independent reviewer per plan \u00a77."
     },
     {
-      "wp": 12, "slug": "events-verification-walk", "family": "events",
-      "status": "ready", "tier": "small", "review": "one", "reviewer_model": "strong",
-      "deps": [10, 11],
+      "wp": 12,
+      "slug": "events-verification-walk",
+      "family": "events",
+      "status": "ready",
+      "tier": "small",
+      "review": "one",
+      "reviewer_model": "strong",
+      "deps": [
+        43,
+        11
+      ],
       "clauses": "A1-6.1..A1-6.9, A1-5.9 tamper matrix T1..T17",
-      "files": ["internal/events/"],
+      "files": [
+        "internal/events/"
+      ],
       "tests": "TestTamperMatrixT1ToT17 (one subtest per row: detection AND break_kind), TestConcurrentAppendsProduceContiguousSeq, TestConcurrentAppendsAcrossEngagements, TestVerificationIsFullWalkNoSampling, TestVerificationIdempotent (A1-6.8), TestOneBreakEventPerRun (P-32), TestFailedChainStillAcceptsAppends (A1-6.4)",
       "gate": "all 17 tamper rows detect and name break_kind",
-      "notes": "Consumer-defined ChainStore interface + in-memory fake in tests (review row). Consumes WP-10's ChainHead. Safety-adjacent: reviewer runs on the strong tier (plan §5 stage A3)."
+      "notes": "Consumer-defined ChainStore interface + in-memory fake in tests (review row). Consumes WP-10's ChainHead. Safety-adjacent: reviewer runs on the strong tier (plan \u00a75 stage A3)."
     },
     {
-      "wp": 15, "slug": "graph-validation", "family": "graph",
-      "status": "ready", "tier": "small", "review": "two",
-      "deps": [14],
+      "wp": 15,
+      "slug": "graph-validation",
+      "family": "graph",
+      "status": "ready",
+      "tier": "small",
+      "review": "two",
+      "deps": [
+        14
+      ],
       "clauses": "A2-10.2 steps 3..11, A2-10.3..A2-10.7, A2-7.1/7.2, A2-3.3..A2-3.7, A2-4.3/4.5/4.7",
-      "files": ["internal/graph/"],
-      "tests": "TestValidationOrderIsDeterministic (A2-10.2), TestEndpointMatrix (one subtest per A2-3.2 row, allowed + disallowed; consume AllowsEndpoints), TestNotApplicableFieldRejected, TestCIDRMustParse, TestCapsRejectWithSummaryTooLarge (first caller of caps.Fits — discharges the carried debt), TestReservedAttrKeysRejected, TestSelfEdgeRejected, TestSupersedeConstraints (same kind, current target, no cycle, MaxSupersedeChain per P-53), TestDuplicateEdgeCollapses, TestContradictsDirectionNormalized (P-52)",
+      "files": [
+        "internal/graph/"
+      ],
+      "tests": "TestValidationOrderIsDeterministic (A2-10.2), TestEndpointMatrix (one subtest per A2-3.2 row, allowed + disallowed; consume AllowsEndpoints), TestNotApplicableFieldRejected, TestCIDRMustParse, TestCapsRejectWithSummaryTooLarge (first caller of caps.Fits \u2014 discharges the carried debt), TestReservedAttrKeysRejected, TestSelfEdgeRejected, TestSupersedeConstraints (same kind, current target, no cycle, MaxSupersedeChain per P-53), TestDuplicateEdgeCollapses, TestContradictsDirectionNormalized (P-52)",
       "gate": "A2-9.4 caller-side exemption tested positive+negative; A2-5.7 reclassification tested for both caller contexts",
-      "notes": "The review row's TestNodeDedupIncludesConfidence is STALE (ADR-0022 removed finding-level confidence): surface it, rename it (e.g. TestNodeDedupKeepsEveryObservation), never implement a confidence field. Handoff from WP-14 (tracker 2026-10-07): own A2-5.7's caller-dependent internal/validation reclassification at A2-10.2 step 12 (WP-14's type-level kinds are defaults — a silent pass-through ships the wrong kind); own the raw-body UTF-8 rejection at the request-decode boundary (H1: encoding/json normalizes invalid UTF-8 at decode); map foreign *json.SyntaxError to A0-3 kinds (H2 — else every malformed client body 500s; paging precedent); apply the 64-byte ToolVersionMaxBytes cap at step 8 (H3); wire the A2-9.4 caller-side platform-minted exemption (secretscan + ids.Valid). Consume AllowsEndpoints, ValidateProvenance, CanonicalContent, in-package reservedAttrKeys (51 keys incl. node_id since A2 §6 item 19). Import internal/caps for A2-7. review=two: enforcement path gets a second independent reviewer."
+      "notes": "The review row's TestNodeDedupIncludesConfidence is STALE (ADR-0022 removed finding-level confidence): surface it, rename it (e.g. TestNodeDedupKeepsEveryObservation), never implement a confidence field. Handoff from WP-14 (tracker 2026-10-07): own A2-5.7's caller-dependent internal/validation reclassification at A2-10.2 step 12 (WP-14's type-level kinds are defaults \u2014 a silent pass-through ships the wrong kind); own the raw-body UTF-8 rejection at the request-decode boundary (H1: encoding/json normalizes invalid UTF-8 at decode); map foreign *json.SyntaxError to A0-3 kinds (H2 \u2014 else every malformed client body 500s; paging precedent); apply the 64-byte ToolVersionMaxBytes cap at step 8 (H3); wire the A2-9.4 caller-side platform-minted exemption (secretscan + ids.Valid). Consume AllowsEndpoints, ValidateProvenance, CanonicalContent, in-package reservedAttrKeys (51 keys incl. node_id since A2 \u00a76 item 19). Import internal/caps for A2-7. review=two: enforcement path gets a second independent reviewer."
     },
     {
-      "wp": 16, "slug": "graph-quarantine", "family": "graph",
-      "status": "ready", "tier": "small", "review": "one",
-      "deps": [15],
+      "wp": 16,
+      "slug": "graph-quarantine",
+      "family": "graph",
+      "status": "ready",
+      "tier": "small",
+      "review": "one",
+      "deps": [
+        15
+      ],
       "clauses": "A2-8.1..A2-8.10, A2-10.2 step 13, QuarantineDecider (P-48), A2-12.5",
-      "files": ["internal/graph/"],
+      "files": [
+        "internal/graph/"
+      ],
       "tests": "TestQuarantineIsNeverCallerSettable, TestBlacklistedNotReleasable, TestPerKindMatchedFields (P-47 table), TestOneHopPropagation, TestPlanningReadOmitsQuarantinedAndRetracted, TestReportingReadIncludesQuarantinedExcludesReportExcluded, TestQuarantineFlagFlipDoesNotSkipRows (A2-8.9 mid-paging)",
       "gate": "TestQuarantineIsNeverCallerSettable",
-      "notes": "quarantine.go + a stub decider in tests (review row). graph never imports policy (A2-8.2) — the decider is an interface."
+      "notes": "quarantine.go + a stub decider in tests (review row). graph never imports policy (A2-8.2) \u2014 the decider is an interface."
     },
     {
-      "wp": 17, "slug": "store-seams", "family": "store",
-      "status": "ready", "tier": "small", "review": "one",
-      "deps": [12, 16],
+      "wp": 17,
+      "slug": "store-seams",
+      "family": "store",
+      "status": "ready",
+      "tier": "small",
+      "review": "one",
+      "deps": [
+        12,
+        16
+      ],
       "clauses": "A1-5.6/5.7, A1-7.2/7.8/7.9, A1-8.6, A2-1.4, A2-10.6, A2-11.1, P-45, P-54",
-      "files": ["internal/store/"],
+      "files": [
+        "internal/store/"
+      ],
       "tests": "TestNoUpdateOrDeleteOnEventSeam, TestNoBulkEventReadSpansEngagements, TestNoBulkReadSpansEngagements, TestEveryReadMethodTakesEngagementID (reflection over both seams), TestGraphSeamHasExactlyFourMutationMethods (P-54)",
       "gate": "interfaces only, no pgx import (go list -deps)",
-      "notes": "Interfaces only — store/postgres impl is WP-22/23. Carry the backlog §6 store-seam duties list into doc.go dispositions (per-engagement append lock A1-5.4, dedup table A1-7.6, ingest watermark A1-7.7, chain_head_trail, kill outbox with REVOKE UPDATE, DELETE)."
+      "notes": "Interfaces only \u2014 store/postgres impl is WP-22/23. Carry the backlog \u00a76 store-seam duties list into doc.go dispositions (per-engagement append lock A1-5.4, dedup table A1-7.6, ingest watermark A1-7.7, chain_head_trail, kill outbox with REVOKE UPDATE, DELETE)."
     },
     {
-      "wp": 18, "slug": "ingest-mapping", "family": "ingest",
-      "status": "ready", "tier": "small", "review": "one",
-      "deps": [12, 15, 17],
+      "wp": 18,
+      "slug": "ingest-mapping",
+      "family": "ingest",
+      "status": "ready",
+      "tier": "small",
+      "review": "one",
+      "deps": [
+        12,
+        15,
+        17
+      ],
       "clauses": "A1-3.3 graph kinds, A1-3.6, A1-7.7, A2-5.3/5.4, the P-65 mapping table, P-61",
-      "files": ["internal/ingest/"],
+      "files": [
+        "internal/ingest/"
+      ],
       "tests": "TestFieldNameMappingIsTotal (every A1 graph-payload field maps to a graph field, P-65), TestPrincipalKindIsNotCopiedFromActor (P-61), TestReplayIsIdempotent (same event twice -> one node, one edge), TestRejectedWriteIsStillChained (A2-10.8, via the events fake)",
       "gate": "mapping totality over all 42 kinds' graph-relevant fields",
-      "notes": "Pure mapping: A1 event -> NodeDraft/EdgeDraft. A1-3.6/A2-1.6 field spellings are frozen (graph_node_id, agent_node_id, ...) — parse them from the contracts, do not transcribe."
+      "notes": "Pure mapping: A1 event -> NodeDraft/EdgeDraft. A1-3.6/A2-1.6 field spellings are frozen (graph_node_id, agent_node_id, ...) \u2014 parse them from the contracts, do not transcribe."
     },
     {
-      "wp": 19, "slug": "contract-suite-a0", "family": "suites",
-      "status": "ready", "tier": "small", "review": "one",
-      "deps": [7, 8],
+      "wp": 19,
+      "slug": "contract-suite-a0",
+      "family": "suites",
+      "status": "ready",
+      "tier": "small",
+      "review": "one",
+      "deps": [
+        7,
+        8
+      ],
       "clauses": "contracts/README.md merge gate, A0-2.17, A0-6.1/6.2, A0-8.x",
-      "files": ["internal/cjson/", "internal/errs/", "internal/paging/", "internal/secretscan/", "internal/contracttest/"],
+      "files": [
+        "internal/cjson/",
+        "internal/errs/",
+        "internal/paging/",
+        "internal/secretscan/",
+        "internal/contracttest/"
+      ],
       "tests": "the six README gate items restricted to A0 types (P-83, P-87, P-88, P-89, P-90, P-93)",
       "gate": "contracts/README.md merge gate passes for A0",
-      "notes": "Schedulable immediately (deps merged). Carried debt (backlog 2026-09-29): secretscan's planted one-value-per-rule-id corpus is provisional — move it into a shared-suite package (suggest internal/contracttest), have events (WP-20) and graph (WP-21) import it, NEVER the reverse (secretscan must not import its own oracle), then shrink secretscan's local copy. Also carries A0 §6 item 23's shared ids: TestSecretScanNamesFieldNotValue, TestNoSecretValueOrDigestInError."
+      "notes": "Schedulable immediately (deps merged). Carried debt (backlog 2026-09-29): secretscan's planted one-value-per-rule-id corpus is provisional \u2014 move it into a shared-suite package (suggest internal/contracttest), have events (WP-20) and graph (WP-21) import it, NEVER the reverse (secretscan must not import its own oracle), then shrink secretscan's local copy. Also carries A0 \u00a76 item 23's shared ids: TestSecretScanNamesFieldNotValue, TestNoSecretValueOrDigestInError."
     },
     {
-      "wp": 20, "slug": "contract-suite-a1", "family": "suites",
-      "status": "ready", "tier": "small", "review": "one",
-      "deps": [12, 13, 17],
+      "wp": 20,
+      "slug": "contract-suite-a1",
+      "family": "suites",
+      "status": "ready",
+      "tier": "small",
+      "review": "one",
+      "deps": [
+        12,
+        13,
+        17
+      ],
       "clauses": "contracts/README.md merge gate, A1-4.9, A1-5.9, A1-8.6",
-      "files": ["internal/events/", "internal/contracttest/"],
+      "files": [
+        "internal/events/",
+        "internal/contracttest/"
+      ],
       "tests": "TestEventSecretFreeSerialization, TestNoMaskingMappingInEvents, TestEventCarriesReferencesOnly, TestEventEngagementBReadNeverReturnsA, TestEventIDFromAIsNotFoundInB, TestCursorFromEngagementARejectedInB, TestFilterWithForeignIDReturnsNothing, TestSSEStreamNeverCarriesAnotherEngagement, TestServedEventIgnoresUnknownFields, TestAppendRejectsUnknownField (incl. case variants, P-36), TestAppendRejectsPlatformStampedFields (A1-2.3), TestKillPathDoesNotBlockOnEventStore (A1-7.12)",
       "gate": "contracts/README.md merge gate passes for A1",
-      "notes": "A0 §4.1's k/id split: WP-20 owns A0-4.8's row-resolution half with WP-19's collection support (decode-time half shipped in paging). Imports the shared corpus package (WP-19)."
+      "notes": "A0 \u00a74.1's k/id split: WP-20 owns A0-4.8's row-resolution half with WP-19's collection support (decode-time half shipped in paging). Imports the shared corpus package (WP-19)."
     },
     {
-      "wp": 21, "slug": "contract-suite-a2", "family": "suites",
-      "status": "ready", "tier": "small", "review": "one",
-      "deps": [16, 17],
+      "wp": 21,
+      "slug": "contract-suite-a2",
+      "family": "suites",
+      "status": "ready",
+      "tier": "small",
+      "review": "one",
+      "deps": [
+        16,
+        17
+      ],
       "clauses": "contracts/README.md merge gate, A2-9.7, A2-11.4",
-      "files": ["internal/graph/", "internal/contracttest/"],
+      "files": [
+        "internal/graph/",
+        "internal/contracttest/"
+      ],
       "tests": "TestGraphSecretFreeSerialization, TestCredentialNodeHoldsReferenceOnly, TestNoMaskingMappingInGraph, TestGraphEngagementBReadNeverReturnsA, TestGraphNodeIDFromAIsNotFoundInB, TestNoCrossEngagementEdge, TestCursorFromEngagementARejectedInB, TestNodeDedupDoesNotSpanEngagements (P-85), TestNodeWriteRejectsUnknownField, TestImmutableFieldUpdateIsConflict (P-99), TestDenormalizedEndpointKindsEqual (P-100), TestContentHashRecomputedFromStoredBytes (P-101)",
       "gate": "contracts/README.md merge gate passes for A2",
       "notes": "Imports the shared corpus package (WP-19)."
     },
     {
-      "wp": 22, "slug": "store-postgres-events-graph", "family": "store",
-      "status": "ready", "tier": "strong+human", "review": "two",
-      "deps": [17],
+      "wp": 22,
+      "slug": "store-postgres-events-graph",
+      "family": "store",
+      "status": "ready",
+      "tier": "strong+human",
+      "review": "two",
+      "deps": [
+        17
+      ],
       "clauses": "A1-5.4/5.6/5.7/7.6/7.9, A2-1.4/3.5/4.7/4.8, A0-1.9",
-      "files": ["internal/store/postgres/", "vendor/", "go.mod", "go.sum", "deploy/"],
+      "files": [
+        "internal/store/postgres/",
+        "vendor/",
+        "go.mod",
+        "go.sum",
+        "deploy/"
+      ],
       "tests": "TestAppendSerializesPerEngagement (opt-in), TestPreimageColumnRoundTrips, TestDedupConstraintBlocksRace, TestIDOrderingMatchesByteOrderCollateC (P-105), TestDBLevelAppendOnly (A1-7.9 REVOKE)",
-      "gate": "go.mod = ADR-0010 exception list only; vendor/ consistent (go mod verify); integration tests opt-in per DESIGN §8",
-      "notes": "FIRST pgx vendoring — ADR-0010 governs (pinned + vendored). Needs a real PostgreSQL (P3 Linux host); hermetic unit tests + opt-in integration split. COLLATE \"C\" declared ON THE COLUMN in DDL, never per query (A0-4.6). H4: human deep review (audit spine, REVOKE enforcement). go.mod change requires the ADR-0010 check in CI to pass."
+      "gate": "go.mod = ADR-0010 exception list only; vendor/ consistent (go mod verify); integration tests opt-in per DESIGN \u00a78",
+      "notes": "FIRST pgx vendoring \u2014 ADR-0010 governs (pinned + vendored). Needs a real PostgreSQL (P3 Linux host); hermetic unit tests + opt-in integration split. COLLATE \"C\" declared ON THE COLUMN in DDL, never per query (A0-4.6). H4: human deep review (audit spine, REVOKE enforcement). go.mod change requires the ADR-0010 check in CI to pass."
     },
     {
-      "wp": 31, "slug": "tools-registry", "family": "tools",
-      "status": "ready", "tier": "small", "review": "one",
+      "wp": 31,
+      "slug": "tools-registry",
+      "family": "tools",
+      "status": "ready",
+      "tier": "small",
+      "review": "one",
       "deps": [],
       "clauses": "ADR-0008, Q14, D16, A1-3.3 action_blocked{image_not_allowed}",
-      "files": ["internal/tools/", "deploy/tools/"],
+      "files": [
+        "internal/tools/",
+        "deploy/tools/"
+      ],
       "tests": "TestEveryEntryHasEveryADR0008Field, TestRiskTierDrivesApprovalRouting, TestImageDigestPinnedAndValidated, TestUnknownToolIDRejected, TestArgvLengthAndCountCapped, TestNoToolCanTargetAnArbitraryURL (A3: no generic upload tool), TestToolIDShapePerA0_1_3",
       "gate": "registry JSON schema + risk tiers drive approval routing in tests",
-      "notes": "Schedulable immediately (no deps). Plan §4 row 31. The D16 deferral (registry = versioned JSON file under deploy/tools/, ~3 entries) is a proposal pending H3 — implement the entry struct/shape that survives either ruling (file source now, table+UI later, additive per Q13)."
+      "notes": "Schedulable immediately (no deps). Plan \u00a74 row 31. The D16 deferral (registry = versioned JSON file under deploy/tools/, ~3 entries) is a proposal pending H3 \u2014 implement the entry struct/shape that survives either ruling (file source now, table+UI later, additive per Q13)."
     },
-
-    { "wp": 23, "slug": "store-schema-impls",  "status": "blocked-h3", "tier": "strong+human", "deps": [], "notes": "plan §4 row 23; details after H3" },
-    { "wp": 24, "slug": "auth",                "status": "blocked-h3", "tier": "strong+human", "deps": [], "notes": "PBKDF2 RFC 6070 vectors, sessions, CSRF; D17 (no TOTP) ruling required" },
-    { "wp": 25, "slug": "machine-tokens",      "status": "blocked-h3", "tier": "strong+human", "deps": [], "notes": "A5-min; Q6 excluded verbs hard-blocked" },
-    { "wp": 26, "slug": "policy",              "status": "blocked-h3", "tier": "strong+human", "deps": [], "notes": "blacklist beats allowlist beats approval; hard stop" },
-    { "wp": 27, "slug": "a7-min-spawn-contract","status": "blocked-h3", "tier": "principal",   "deps": [], "notes": "contract freeze: A7-min with recomputable fingerprint vector; D18 ruling required" },
-    { "wp": 28, "slug": "a4-a5-min-freeze",    "status": "blocked-h3", "tier": "principal",   "deps": [], "notes": "contract freeze session: A4-min (~20 endpoints) + A5-min; D10/D13/D17 rulings required" },
-    { "wp": 29, "slug": "broker",              "status": "blocked-h3", "tier": "strong+human", "deps": [], "notes": "spawn broker, container lifecycle; egress ADR must be accepted first" },
-    { "wp": 30, "slug": "netpolicy-probe",     "status": "blocked-h3", "tier": "strong+human", "deps": [], "notes": "host nftables + probe inside a real worker container; needs the P3 Linux host" },
-    { "wp": 32, "slug": "llm-provider-gateway","status": "blocked-h3", "tier": "strong+human", "deps": [], "notes": "streaming SSE parser = AGENTS.md high review bar; secret exclusion under every policy; D12 ruling required" },
-    { "wp": 33, "slug": "apiclient",           "status": "blocked-h3", "tier": "small",        "deps": [], "notes": "typed /api/v1 client; SSE parser gets a strong-tier reviewer" },
-    { "wp": 34, "slug": "agentloop",           "status": "blocked-h3", "tier": "strong+human", "deps": [], "notes": "the unprecedented unknown (plan §8 R1); IR-3 ruling + R1 smoke test gate this WP" },
-    { "wp": 35, "slug": "api",                 "status": "blocked-h3", "tier": "strong+human", "deps": [], "notes": "router, middleware, auth'd reads, spawns, approvals, append, llm; enforcement surface" },
-    { "wp": 36, "slug": "evidence",            "status": "blocked-h3", "tier": "small",        "deps": [], "notes": "write-once evidence store; evidence browser cut per plan §6" },
-    { "wp": 37, "slug": "notify",              "status": "blocked-h3", "tier": "small",        "deps": [], "notes": "signed webhooks + the D5 chain-head anchor (integrity control) get a strong-tier reviewer" },
-    { "wp": 38, "slug": "ui",                  "status": "blocked-h3", "tier": "small",        "deps": [], "notes": "HTMX: login, approval queue (fingerprint hash + CSRF on the button), run view, hard stop" },
-    { "wp": 39, "slug": "worker",              "status": "blocked-h3", "tier": "small",        "deps": [], "notes": "task runtime; three C kinds + evidence upload; no graph access" },
-    { "wp": 40, "slug": "images",              "status": "blocked-h3", "tier": "strong+human", "deps": [], "notes": "Dockerfiles, pinned digests, supply chain (A10)" },
-    { "wp": 41, "slug": "compose-runbook",     "status": "blocked-h3", "tier": "small",        "deps": [], "notes": "deploy/compose + runbook; platform is the only container with the docker socket" },
-    { "wp": "IR-3", "slug": "agent-loop-ruling", "status": "blocked-h3", "tier": "principal", "deps": [], "notes": "one page, hard gate on WP-33/34" },
-    { "wp": "IR-4", "slug": "ddl-ruling",        "status": "blocked-h3", "tier": "principal", "deps": [], "notes": "the slice's DDL; numbered .sql migrations, COLLATE C on every id column" }
+    {
+      "wp": 23,
+      "slug": "store-schema-impls",
+      "status": "blocked-h3",
+      "tier": "strong+human",
+      "deps": [],
+      "notes": "plan \u00a74 row 23; details after H3"
+    },
+    {
+      "wp": 24,
+      "slug": "auth",
+      "status": "blocked-h3",
+      "tier": "strong+human",
+      "deps": [],
+      "notes": "PBKDF2 RFC 6070 vectors, sessions, CSRF; D17 (no TOTP) ruling required"
+    },
+    {
+      "wp": 25,
+      "slug": "machine-tokens",
+      "status": "blocked-h3",
+      "tier": "strong+human",
+      "deps": [],
+      "notes": "A5-min; Q6 excluded verbs hard-blocked"
+    },
+    {
+      "wp": 26,
+      "slug": "policy",
+      "status": "blocked-h3",
+      "tier": "strong+human",
+      "deps": [],
+      "notes": "blacklist beats allowlist beats approval; hard stop"
+    },
+    {
+      "wp": 27,
+      "slug": "a7-min-spawn-contract",
+      "status": "blocked-h3",
+      "tier": "principal",
+      "deps": [],
+      "notes": "contract freeze: A7-min with recomputable fingerprint vector; D18 ruling required"
+    },
+    {
+      "wp": 28,
+      "slug": "a4-a5-min-freeze",
+      "status": "blocked-h3",
+      "tier": "principal",
+      "deps": [],
+      "notes": "contract freeze session: A4-min (~20 endpoints) + A5-min; D10/D13/D17 rulings required"
+    },
+    {
+      "wp": 29,
+      "slug": "broker",
+      "status": "blocked-h3",
+      "tier": "strong+human",
+      "deps": [],
+      "notes": "spawn broker, container lifecycle; egress ADR must be accepted first"
+    },
+    {
+      "wp": 30,
+      "slug": "netpolicy-probe",
+      "status": "blocked-h3",
+      "tier": "strong+human",
+      "deps": [],
+      "notes": "host nftables + probe inside a real worker container; needs the P3 Linux host"
+    },
+    {
+      "wp": 32,
+      "slug": "llm-provider-gateway",
+      "status": "blocked-h3",
+      "tier": "strong+human",
+      "deps": [],
+      "notes": "streaming SSE parser = AGENTS.md high review bar; secret exclusion under every policy; D12 ruling required"
+    },
+    {
+      "wp": 33,
+      "slug": "apiclient",
+      "status": "blocked-h3",
+      "tier": "small",
+      "deps": [],
+      "notes": "typed /api/v1 client; SSE parser gets a strong-tier reviewer"
+    },
+    {
+      "wp": 34,
+      "slug": "agentloop",
+      "status": "blocked-h3",
+      "tier": "strong+human",
+      "deps": [],
+      "notes": "the unprecedented unknown (plan \u00a78 R1); IR-3 ruling + R1 smoke test gate this WP"
+    },
+    {
+      "wp": 35,
+      "slug": "api",
+      "status": "blocked-h3",
+      "tier": "strong+human",
+      "deps": [],
+      "notes": "router, middleware, auth'd reads, spawns, approvals, append, llm; enforcement surface"
+    },
+    {
+      "wp": 36,
+      "slug": "evidence",
+      "status": "blocked-h3",
+      "tier": "small",
+      "deps": [],
+      "notes": "write-once evidence store; evidence browser cut per plan \u00a76"
+    },
+    {
+      "wp": 37,
+      "slug": "notify",
+      "status": "blocked-h3",
+      "tier": "small",
+      "deps": [],
+      "notes": "signed webhooks + the D5 chain-head anchor (integrity control) get a strong-tier reviewer"
+    },
+    {
+      "wp": 38,
+      "slug": "ui",
+      "status": "blocked-h3",
+      "tier": "small",
+      "deps": [],
+      "notes": "HTMX: login, approval queue (fingerprint hash + CSRF on the button), run view, hard stop"
+    },
+    {
+      "wp": 39,
+      "slug": "worker",
+      "status": "blocked-h3",
+      "tier": "small",
+      "deps": [],
+      "notes": "task runtime; three C kinds + evidence upload; no graph access"
+    },
+    {
+      "wp": 40,
+      "slug": "images",
+      "status": "blocked-h3",
+      "tier": "strong+human",
+      "deps": [],
+      "notes": "Dockerfiles, pinned digests, supply chain (A10)"
+    },
+    {
+      "wp": 41,
+      "slug": "compose-runbook",
+      "status": "blocked-h3",
+      "tier": "small",
+      "deps": [],
+      "notes": "deploy/compose + runbook; platform is the only container with the docker socket"
+    },
+    {
+      "wp": "IR-3",
+      "slug": "agent-loop-ruling",
+      "status": "blocked-h3",
+      "tier": "principal",
+      "deps": [],
+      "notes": "one page, hard gate on WP-33/34"
+    },
+    {
+      "wp": "IR-4",
+      "slug": "ddl-ruling",
+      "status": "blocked-h3",
+      "tier": "principal",
+      "deps": [],
+      "notes": "the slice's DDL; numbered .sql migrations, COLLATE C on every id column"
+    }
   ]
 }
