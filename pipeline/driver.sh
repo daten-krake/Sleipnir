@@ -141,16 +141,25 @@ print(sum(1 for e in q["work"] if e.get("status") in ("pr_open", "principal_vali
 # the only handoff between stages is the files (briefs, reports, commits).
 
 run_capped() { # run_capped <secs> <logfile> <cmd...> — kills the whole group
+  # Wall-clock deadline, NOT `sleep $secs` / $SECONDS: both are monotonic and
+  # pause while macOS sleeps, so on the 2026-10-07 trial run a closed lid
+  # stretched a 2h cap to 4.5h wall time and a `--for 2h` run overshot its
+  # deadline by 2.5h (pipeline/runs/wp-10/timeout-findings.md). With an epoch
+  # deadline the cap holds across system sleep and fires immediately on wake.
   local secs="$1" log="$2"; shift 2
-  local t0=$SECONDS rc
+  local end rc
+  end=$(( $(date +%s) + secs ))
   perl -e 'setpgrp(0,0); exec @ARGV or exit 127' "$@" >"$log" 2>&1 &
   local pid=$!
-  ( sleep "$secs"; kill -TERM -- "-$pid" 2>/dev/null
-    sleep 30;  kill -KILL -- "-$pid" 2>/dev/null ) &
+  ( while [ "$(date +%s)" -lt "$end" ]; do sleep 5; done
+    kill -TERM -- "-$pid" 2>/dev/null
+    end=$((end + 30))
+    while [ "$(date +%s)" -lt "$end" ]; do sleep 5; done
+    kill -KILL -- "-$pid" 2>/dev/null ) &
   local wpid=$!
   wait "$pid"; rc=$?
   kill "$wpid" 2>/dev/null; wait "$wpid" 2>/dev/null
-  if [ $rc -ne 0 ] && [ $((SECONDS - t0)) -ge "$secs" ]; then rc=124; fi
+  if [ $rc -ne 0 ] && [ "$(date +%s)" -ge "$end" ]; then rc=124; fi
   return $rc
 }
 
@@ -387,6 +396,15 @@ cmd_loop() {
     log "loop: untimed run (stop with: pkill -f 'driver.sh loop'; running children keep their own caps)"
   fi
   log "loop: started (max open PRs $MAX_OPEN_PRS, awaiting-human cap $AWAITING_HUMAN_MAX, sleep ${LOOP_SLEEP_S}s)"
+  # Keep the machine awake while looping (macOS): system sleep pauses children
+  # and kills in-flight LM Studio streams (2026-10-07 trial run). -w $$ ties
+  # the assertion to this driver's lifetime; it cannot prevent clamshell
+  # (lid-close) sleep on battery — unattended runs still need the lid open
+  # or an external display/AC.
+  if command -v caffeinate >/dev/null 2>&1; then
+    caffeinate -i -w $$ & # -w $$: exits by itself when this driver dies — no kill, no disown (bash 3.2 disown takes jobspecs, not pids)
+    log "loop: caffeinate -i -w $$ started (pid $!) — idle sleep suppressed; lid-close sleep is NOT (keep the lid open)"
+  fi
   while true; do
     if [ "$CHILD_DEADLINE" -gt 0 ]; then
       local rem=$((CHILD_DEADLINE - $(now_s)))
@@ -408,15 +426,28 @@ cmd_loop() {
       sleep "$LOOP_SLEEP_S"; continue
     fi
     log "loop: picking up wp-$wp"
-    if cmd_start "$wp" && cmd_review "$wp"; then
+    # Stage functions `die` (exit 1) on timeout/gate/ownership failures — in a
+    # subshell that parks THIS lane only. Without the subshell one timed-out
+    # lane killed the whole run: the 2026-10-07 trial never printed its run
+    # summary and never reached the three other schedulable lanes. One-shot
+    # invocations (driver.sh start/review/fix) keep the loud exit.
+    if ( cmd_start "$wp" ) && ( cmd_review "$wp" ); then
       local rd; rd="$(run_dir "$wp")"
       if [ -f "$rd/review.md" ] && grep -q "^## MUST FIX" "$rd/review.md" \
          && ! grep -A1 "^## MUST FIX" "$rd/review.md" | grep -qi "^\*\*None"; then
         log "loop: wp-$wp has MUST FIX findings — fix round"
-        cmd_fix "$wp" "$rd/review.md" && cmd_review "$wp" || log "loop: wp-$wp fix/re-review failed — parking for principal"
+        if ( cmd_fix "$wp" "$rd/review.md" ) && ( cmd_review "$wp" ); then
+          qset "$wp" status principal_validation
+          log "loop: wp-$wp parked at principal_validation (report: $rd/review.md)"
+        else
+          # Keep the failure status the stage set (timed_out/gates_failed/
+          # ownership_violation) — do not clobber it with principal_validation.
+          log "loop: wp-$wp fix/re-review failed — parked at $(qget "$wp" status) for principal"
+        fi
+      else
+        qset "$wp" status principal_validation
+        log "loop: wp-$wp parked at principal_validation (report: $(run_dir "$wp")/review.md)"
       fi
-      qset "$wp" status principal_validation
-      log "loop: wp-$wp parked at principal_validation (report: $(run_dir "$wp")/review.md)"
     else
       log "loop: wp-$wp stopped at $(qget "$wp" status) — parking; next iteration skips it"
     fi
